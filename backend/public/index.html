@@ -1,0 +1,1561 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sentinel AI — Disaster Response System</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Share+Tech+Mono&family=Exo+2:wght@300;400;500;600;700;800&display=swap');
+
+  *{margin:0;padding:0;box-sizing:border-box}
+  :root{
+    --bg:#0B0F14;
+    --panel:rgba(13,18,26,0.85);
+    --panel2:rgba(16,22,32,0.9);
+    --border:rgba(255,255,255,0.08);
+    --border2:rgba(255,255,255,0.13);
+    --red:#FF3B3B;
+    --red2:#cc2222;
+    --redglow:rgba(255,59,59,0.3);
+    --green:#00E676;
+    --greenglow:rgba(0,230,118,0.25);
+    --yellow:#FFD600;
+    --yellowglow:rgba(255,214,0,0.25);
+    --blue:#2979FF;
+    --cyan:#00BCD4;
+    --orange:#FF6D00;
+    --text:#E8EAED;
+    --text2:#9AA0A6;
+    --text3:#5F6368;
+    --mono:'JetBrains Mono',monospace;
+    --ui:'Exo 2',sans-serif;
+  }
+
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:var(--ui);
+    font-size:13px;
+    height:100vh;
+    overflow:hidden;
+    display:grid;
+    grid-template-rows:56px 1fr;
+    grid-template-columns:1fr;
+  }
+
+  /* TOPBAR */
+  #topbar{
+    grid-row:1;
+    background:rgba(8,12,18,0.95);
+    border-bottom:1px solid var(--border);
+    display:flex;
+    align-items:center;
+    padding:0 16px;
+    gap:0;
+    backdrop-filter:blur(10px);
+    z-index:100;
+  }
+  .logo-area{
+    display:flex;align-items:center;gap:10px;
+    padding-right:24px;
+    border-right:1px solid var(--border);
+    min-width:220px;
+  }
+  .logo-icon{
+    width:36px;height:36px;
+    border:1.5px solid var(--red);
+    border-radius:50%;
+    display:flex;align-items:center;justify-content:center;
+    box-shadow:0 0 12px var(--redglow);
+    position:relative;
+    animation:logoPulse 2s ease-in-out infinite;
+  }
+  @keyframes logoPulse{0%,100%{box-shadow:0 0 8px var(--redglow)}50%{box-shadow:0 0 20px var(--redglow),0 0 40px rgba(255,59,59,0.15)}}
+  .logo-icon svg{width:18px;height:18px}
+  .logo-text h1{font-size:15px;font-weight:700;letter-spacing:2px;color:#fff}
+  .logo-text p{font-size:9px;letter-spacing:2px;color:var(--text3);text-transform:uppercase}
+
+  .alert-strip{
+    padding:0 20px;
+    border-right:1px solid var(--border);
+    min-width:320px;
+  }
+  .alert-badge{
+    display:inline-flex;align-items:center;gap:6px;
+    font-size:10px;letter-spacing:1px;color:var(--red);
+    text-transform:uppercase;font-weight:600;
+    margin-bottom:2px;
+  }
+  .alert-badge::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--red);animation:blink 1s infinite}
+  @keyframes blink{0%,100%{opacity:1}50%{opacity:0.2}}
+  .alert-strip h2{font-size:16px;font-weight:700;letter-spacing:1px;color:#fff;line-height:1.1}
+  .crit-badge{
+    background:rgba(255,59,59,0.15);
+    border:1px solid rgba(255,59,59,0.4);
+    color:var(--red);
+    font-size:10px;font-weight:700;letter-spacing:1.5px;
+    padding:2px 8px;border-radius:3px;
+    margin-left:8px;
+    vertical-align:middle;
+  }
+  .alert-strip p{font-size:10px;color:var(--text2);margin-top:2px;font-family:var(--mono)}
+
+  .stats-bar{
+    flex:1;
+    display:grid;
+    grid-template-columns:repeat(5,1fr);
+    padding:0 8px;
+    border-right:1px solid var(--border);
+  }
+  .stat-item{
+    padding:6px 12px;
+    border-right:1px solid var(--border);
+  }
+  .stat-item:last-child{border-right:none}
+  .stat-label{font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--text3);margin-bottom:2px}
+  .stat-value{font-size:20px;font-weight:700;color:#fff;line-height:1;font-family:var(--mono)}
+  .stat-value.red{color:var(--red)}
+  .stat-value.green{color:var(--green)}
+  .stat-sub{font-size:10px;color:var(--text2);margin-top:1px}
+  .stat-sub.pos{color:var(--green)}
+  .stat-sub.neg{color:var(--red)}
+
+  .system-status{
+    padding:0 16px;
+    display:flex;align-items:center;gap:8px;
+    min-width:140px;
+  }
+  .status-icon{display:flex;flex-direction:column;gap:2px}
+  .status-icon span{
+    display:block;width:18px;height:2px;background:var(--green);border-radius:1px;
+  }
+  .status-icon span:nth-child(2){width:12px;opacity:.7;animation:pulse 1.2s ease-in-out infinite}
+  .status-icon span:nth-child(3){width:15px;opacity:.9;animation:pulse 1.6s ease-in-out infinite}
+  @keyframes pulse{0%,100%{opacity:.4}50%{opacity:1}}
+  .status-text{display:flex;flex-direction:column}
+  .status-text span:first-child{font-size:9px;letter-spacing:1px;color:var(--text3);text-transform:uppercase}
+  .status-text strong{font-size:12px;font-weight:700;letter-spacing:2px;color:var(--green);
+    text-shadow:0 0 10px var(--greenglow)}
+
+  /* MAIN LAYOUT */
+  #main{
+    grid-row:2;
+    display:grid;
+    grid-template-columns:280px 1fr 320px;
+    overflow:hidden;
+  }
+
+  /* PANELS BASE */
+  .panel{
+    background:var(--panel);
+    border-right:1px solid var(--border);
+    overflow:hidden;
+    display:flex;flex-direction:column;
+    backdrop-filter:blur(8px);
+  }
+  .panel-header{
+    padding:10px 14px;
+    border-bottom:1px solid var(--border);
+    display:flex;align-items:center;justify-content:space-between;
+    flex-shrink:0;
+  }
+  .panel-title{
+    font-size:10px;letter-spacing:1.5px;text-transform:uppercase;font-weight:600;
+    display:flex;align-items:center;gap:6px;
+  }
+  .panel-title .dot{width:6px;height:6px;border-radius:50%;background:var(--red);
+    box-shadow:0 0 6px var(--redglow)}
+  .panel-title .dot.green{background:var(--green);box-shadow:0 0 6px var(--greenglow)}
+  .see-all{font-size:10px;color:var(--blue);letter-spacing:.5px;cursor:pointer;opacity:.8}
+  .live-badge{
+    font-size:9px;font-weight:700;letter-spacing:1px;color:var(--red);
+    display:flex;align-items:center;gap:4px;
+  }
+  .live-badge::before{content:'';width:5px;height:5px;border-radius:50%;background:var(--red);animation:blink 1s infinite}
+
+  /* LEFT SIDEBAR */
+  #left-sidebar{
+    display:flex;flex-direction:column;
+    overflow:hidden;
+  }
+
+  /* INCIDENT CARD */
+  #incident-panel{flex-shrink:0}
+  .incident-main{
+    padding:12px 14px 10px;
+    border-bottom:1px solid var(--border);
+  }
+  .incident-header{
+    display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:8px;
+  }
+  .incident-icon{
+    width:32px;height:32px;border-radius:50%;
+    background:rgba(255,59,59,0.15);
+    border:1px solid rgba(255,59,59,0.3);
+    display:flex;align-items:center;justify-content:center;
+    flex-shrink:0;
+  }
+  .incident-title-area{flex:1;padding-left:8px}
+  .incident-name{font-size:13px;font-weight:700;color:#fff;line-height:1.2;letter-spacing:.5px}
+  .incident-loc{font-size:11px;color:var(--text2);margin-top:2px}
+  .incident-badge{
+    font-size:9px;font-weight:700;letter-spacing:1px;
+    background:rgba(255,59,59,0.15);border:1px solid rgba(255,59,59,0.4);
+    color:var(--red);padding:2px 7px;border-radius:3px;flex-shrink:0;
+    text-shadow:0 0 8px var(--redglow);
+  }
+
+  .severity-row{
+    display:flex;align-items:flex-end;gap:16px;margin-bottom:10px;
+  }
+  .severity-num{
+    font-size:52px;font-weight:800;color:var(--red);line-height:1;
+    font-family:var(--mono);
+    text-shadow:0 0 30px var(--redglow),0 0 60px rgba(255,59,59,0.15);
+    animation:severityGlow 3s ease-in-out infinite;
+  }
+  @keyframes severityGlow{0%,100%{text-shadow:0 0 20px var(--redglow)}50%{text-shadow:0 0 40px var(--redglow),0 0 80px rgba(255,59,59,0.1)}}
+  .severity-num span{font-size:16px;color:var(--text2);font-weight:400}
+  .severity-meta{flex:1}
+  .meta-row{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:3px 0;border-bottom:1px solid rgba(255,255,255,0.04);
+  }
+  .meta-row:last-child{border-bottom:none}
+  .meta-label{font-size:10px;color:var(--text3);display:flex;align-items:center;gap:4px}
+  .meta-val{font-size:11px;color:var(--text);font-weight:500}
+  .meta-val.hi{color:var(--red)}
+  .meta-val.conf{color:var(--green)}
+
+  .sev-label{font-size:9px;letter-spacing:1px;color:var(--text3);text-transform:uppercase;margin-top:2px}
+  .timestamp-row{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:6px 0 0;
+  }
+  .ts-time{font-size:11px;color:var(--text2);font-family:var(--mono)}
+  .live-dot{
+    font-size:10px;color:var(--red);font-weight:600;
+    display:flex;align-items:center;gap:4px;
+    text-shadow:0 0 8px var(--redglow);
+  }
+  .live-dot::before{content:'';width:5px;height:5px;border-radius:50%;background:var(--red);animation:blink 1s infinite}
+
+  /* INCIDENT LIST */
+  .incident-list{overflow-y:auto;flex:1}
+  .incident-item{
+    padding:8px 14px;
+    border-bottom:1px solid rgba(255,255,255,0.04);
+    cursor:pointer;
+    transition:background .15s;
+    display:flex;align-items:flex-start;gap:8px;
+  }
+  .incident-item:hover{background:rgba(255,255,255,0.03)}
+  .ii-icon{
+    width:26px;height:26px;border-radius:50%;
+    display:flex;align-items:center;justify-content:center;
+    flex-shrink:0;margin-top:1px;
+    font-size:11px;
+  }
+  .ii-icon.red{background:rgba(255,59,59,0.12);border:1px solid rgba(255,59,59,0.2)}
+  .ii-icon.orange{background:rgba(255,109,0,0.12);border:1px solid rgba(255,109,0,0.2)}
+  .ii-icon.yellow{background:rgba(255,214,0,0.12);border:1px solid rgba(255,214,0,0.2)}
+  .ii-body{flex:1}
+  .ii-title{font-size:11px;font-weight:600;color:var(--text);line-height:1.3}
+  .ii-loc{font-size:10px;color:var(--text2);margin-top:1px}
+  .ii-right{text-align:right;flex-shrink:0}
+  .ii-time{font-size:10px;color:var(--text3);font-family:var(--mono)}
+  .sev-tag{
+    font-size:9px;font-weight:700;letter-spacing:.8px;
+    padding:1px 5px;border-radius:2px;margin-top:2px;display:inline-block;
+  }
+  .sev-tag.HIGH{background:rgba(255,109,0,0.15);color:var(--orange);border:1px solid rgba(255,109,0,0.3)}
+  .sev-tag.MEDIUM{background:rgba(255,214,0,0.1);color:var(--yellow);border:1px solid rgba(255,214,0,0.25)}
+  .sev-tag.CRITICAL{background:rgba(255,59,59,0.12);color:var(--red);border:1px solid rgba(255,59,59,0.3)}
+
+  /* AGENT FEED */
+  #agent-panel{flex:1;min-height:0;display:flex;flex-direction:column}
+  .agent-scroll{overflow-y:auto;flex:1;padding:8px 0}
+  .agent-item{
+    padding:6px 14px 6px;
+    display:flex;align-items:flex-start;gap:8px;
+    opacity:0;transform:translateX(-8px);
+    transition:all .4s ease;
+  }
+  .agent-item.visible{opacity:1;transform:translateX(0)}
+  .agent-icon{
+    width:28px;height:28px;border-radius:50%;
+    display:flex;align-items:center;justify-content:center;
+    flex-shrink:0;font-size:11px;
+  }
+  .agent-body{flex:1}
+  .agent-header{display:flex;align-items:center;gap:6px;margin-bottom:2px}
+  .agent-time{font-size:10px;color:var(--text3);font-family:var(--mono)}
+  .agent-name{font-size:11px;font-weight:600}
+  .agent-name.sentinel{color:#7C4DFF}
+  .agent-name.resource{color:#00BCD4}
+  .agent-name.comms{color:#FF6D00}
+  .agent-name.triage{color:#00E676}
+  .agent-name.calc{color:#FFD600}
+  .agent-msg{font-size:11px;color:var(--text2);line-height:1.4}
+
+  .system-logs{
+    border-top:1px solid var(--border);
+    padding:8px 14px;
+    display:flex;align-items:center;justify-content:space-between;
+    flex-shrink:0;
+    cursor:pointer;
+    font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--text3);
+  }
+
+  /* CENTER / MAP AREA */
+  #center-area{
+    display:flex;flex-direction:column;
+    overflow:hidden;
+    position:relative;
+  }
+  #map-container{
+    flex:1;
+    position:relative;
+    min-height:0;
+  }
+  #map{width:100%;height:100%}
+  .map-overlay{
+    position:absolute;top:0;left:0;right:0;bottom:0;
+    pointer-events:none;z-index:500;
+  }
+  .map-top-bar{
+    position:absolute;top:10px;right:10px;
+    z-index:600;
+    display:flex;align-items:center;gap:8px;
+    background:rgba(8,12,18,0.85);
+    border:1px solid var(--border);
+    border-radius:6px;
+    padding:6px 12px;
+    backdrop-filter:blur(8px);
+    font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--text2);
+    cursor:pointer;gap:8px;
+  }
+
+  .map-legend{
+    position:absolute;bottom:40px;left:10px;
+    z-index:600;
+    background:rgba(8,12,18,0.88);
+    border:1px solid var(--border);
+    border-radius:6px;
+    padding:8px 14px;
+    backdrop-filter:blur(8px);
+    display:flex;align-items:center;gap:16px;
+  }
+  .legend-item{display:flex;align-items:center;gap:5px;font-size:10px;color:var(--text2);letter-spacing:.5px}
+  .l-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+  .l-dash{width:16px;height:2px;border-top:2px dashed currentColor;flex-shrink:0}
+
+  /* Map sidebar tools */
+  .map-tools{
+    position:absolute;left:10px;top:50%;transform:translateY(-50%);
+    z-index:600;
+    display:flex;flex-direction:column;gap:4px;
+  }
+  .map-tool-btn{
+    width:32px;height:32px;
+    background:rgba(8,12,18,0.85);
+    border:1px solid var(--border);
+    border-radius:6px;
+    display:flex;align-items:center;justify-content:center;
+    cursor:pointer;
+    backdrop-filter:blur(8px);
+    color:var(--text2);
+    font-size:13px;
+    transition:all .15s;
+  }
+  .map-tool-btn:hover{background:rgba(255,255,255,0.06);color:var(--text)}
+  .map-tool-btn.active{border-color:rgba(41,121,255,0.5);color:var(--blue)}
+
+  /* TRIAGE CHAT */
+  #chat-panel{
+    background:rgba(10,15,22,0.9);
+    border-top:1px solid var(--border);
+    height:240px;flex-shrink:0;
+    display:flex;flex-direction:column;
+    position:relative;
+  }
+  .chat-header{
+    padding:8px 14px;
+    border-bottom:1px solid var(--border);
+    display:flex;align-items:center;justify-content:space-between;
+    flex-shrink:0;
+  }
+  .chat-title{
+    display:flex;align-items:center;gap:8px;
+    font-size:10px;letter-spacing:1.5px;text-transform:uppercase;font-weight:600;color:var(--cyan);
+  }
+  .chat-actions{display:flex;align-items:center;gap:8px}
+  .chat-action-btn{
+    width:24px;height:24px;border-radius:4px;
+    border:1px solid var(--border);
+    background:transparent;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;
+    color:var(--text2);font-size:12px;
+    transition:all .15s;
+  }
+  .chat-action-btn:hover{background:rgba(255,255,255,0.05);color:var(--text)}
+  .chat-body{
+    flex:1;display:flex;overflow:hidden;min-height:0;
+  }
+
+  /* sessions list */
+  .sessions-list{
+    width:140px;flex-shrink:0;
+    border-right:1px solid var(--border);
+    overflow-y:auto;
+  }
+  .sessions-header{
+    padding:6px 10px;border-bottom:1px solid var(--border);
+    font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--text3);
+    display:flex;align-items:center;justify-content:space-between;
+  }
+  .sessions-count{
+    background:rgba(41,121,255,0.2);color:var(--blue);
+    font-size:9px;font-weight:700;padding:1px 5px;border-radius:10px;
+  }
+  .session-item{
+    padding:6px 10px;border-bottom:1px solid rgba(255,255,255,0.03);
+    cursor:pointer;transition:background .15s;
+  }
+  .session-item:hover,.session-item.active{background:rgba(255,255,255,0.04)}
+  .session-avatar{
+    width:24px;height:24px;border-radius:50%;
+    background:rgba(0,188,212,0.15);border:1px solid rgba(0,188,212,0.2);
+    display:flex;align-items:center;justify-content:center;
+    font-size:9px;color:var(--cyan);margin-bottom:4px;
+  }
+  .session-user{font-size:11px;font-weight:500;color:var(--text)}
+  .session-loc{font-size:10px;color:var(--text2)}
+  .session-status{font-size:9px;color:var(--green);margin-top:2px}
+  .view-sessions{
+    padding:8px 10px;border-top:1px solid var(--border);
+    font-size:10px;color:var(--blue);cursor:pointer;
+    display:flex;align-items:center;justify-content:space-between;
+  }
+
+  /* messages */
+  .chat-messages{
+    flex:1;overflow-y:auto;padding:10px 12px;
+    display:flex;flex-direction:column;gap:8px;
+  }
+  .msg{display:flex;gap:8px;align-items:flex-start}
+  .msg.user{flex-direction:row-reverse}
+  .msg-avatar{
+    width:28px;height:28px;border-radius:50%;
+    display:flex;align-items:center;justify-content:center;
+    font-size:10px;flex-shrink:0;
+  }
+  .msg.user .msg-avatar{background:rgba(100,100,120,0.2);border:1px solid rgba(255,255,255,0.1);color:var(--text2)}
+  .msg.ai .msg-avatar{background:rgba(0,230,118,0.1);border:1px solid rgba(0,230,118,0.2);color:var(--green)}
+  .msg-content{max-width:70%}
+  .msg-header{
+    display:flex;align-items:center;gap:6px;margin-bottom:3px;
+  }
+  .msg.user .msg-header{flex-direction:row-reverse}
+  .msg-name{font-size:11px;font-weight:600}
+  .msg.user .msg-name{color:var(--text2)}
+  .msg.ai .msg-name{color:var(--green)}
+  .msg-time{font-size:10px;color:var(--text3);font-family:var(--mono)}
+  .msg-bubble{
+    border-radius:8px;padding:7px 11px;
+    font-size:12px;line-height:1.5;
+  }
+  .msg.user .msg-bubble{
+    background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.08);
+    color:var(--text);border-bottom-right-radius:2px;
+  }
+  .msg.ai .msg-bubble{
+    background:rgba(0,230,118,0.06);border:1px solid rgba(0,230,118,0.12);
+    color:var(--text);border-bottom-left-radius:2px;
+  }
+  .confidence-tag{
+    display:inline-block;margin-top:5px;
+    font-size:10px;font-weight:700;letter-spacing:.5px;
+    color:var(--green);
+    text-shadow:0 0 8px var(--greenglow);
+  }
+
+  /* chat input */
+  .chat-input-row{
+    padding:8px 12px;border-top:1px solid var(--border);
+    display:flex;align-items:center;gap:8px;flex-shrink:0;
+  }
+  .chat-input{
+    flex:1;background:rgba(255,255,255,0.04);
+    border:1px solid var(--border);border-radius:20px;
+    padding:7px 14px;font-size:12px;color:var(--text);
+    font-family:var(--ui);outline:none;
+    transition:border-color .15s;
+  }
+  .chat-input::placeholder{color:var(--text3)}
+  .chat-input:focus{border-color:rgba(0,188,212,0.4)}
+  .chat-send{
+    width:32px;height:32px;border-radius:50%;
+    background:rgba(41,121,255,0.15);
+    border:1px solid rgba(41,121,255,0.3);
+    display:flex;align-items:center;justify-content:center;
+    cursor:pointer;color:var(--blue);font-size:14px;
+    transition:all .15s;flex-shrink:0;
+  }
+  .chat-send:hover{background:rgba(41,121,255,0.25);box-shadow:0 0 12px rgba(41,121,255,0.3)}
+
+  /* RIGHT SIDEBAR */
+  #right-sidebar{
+    border-left:1px solid var(--border);
+    border-right:none;
+    display:flex;flex-direction:column;overflow:hidden;
+  }
+
+  /* RESOURCE ALLOCATION */
+  #resource-panel{flex-shrink:0}
+  .resource-grid{
+    display:grid;grid-template-columns:repeat(3,1fr);
+    gap:8px;padding:10px 12px;
+    border-bottom:1px solid var(--border);
+  }
+  .res-card{
+    background:rgba(255,255,255,0.03);
+    border:1px solid var(--border);
+    border-radius:6px;padding:8px 10px;
+    text-align:center;
+  }
+  .res-icon{
+    width:28px;height:28px;border-radius:50%;
+    display:flex;align-items:center;justify-content:center;
+    margin:0 auto 4px;font-size:12px;
+  }
+  .res-count{font-size:20px;font-weight:700;color:#fff;font-family:var(--mono);line-height:1}
+  .res-label{font-size:9px;color:var(--text3);letter-spacing:.5px;margin-top:2px}
+  .res-sub{font-size:10px;color:var(--text2)}
+
+  /* DEPLOYMENTS */
+  #deploy-panel{flex-shrink:0}
+  .deploy-list{padding:8px 12px;display:flex;flex-direction:column;gap:8px}
+  .deploy-item{
+    background:rgba(255,255,255,0.02);
+    border:1px solid var(--border);
+    border-radius:6px;padding:8px 10px;
+  }
+  .deploy-header{
+    display:flex;align-items:center;gap:8px;margin-bottom:6px;
+  }
+  .deploy-icon{
+    width:28px;height:28px;border-radius:50%;
+    background:rgba(0,230,118,0.1);border:1px solid rgba(0,230,118,0.2);
+    display:flex;align-items:center;justify-content:center;font-size:12px;
+    flex-shrink:0;
+  }
+  .deploy-info{flex:1}
+  .deploy-name{font-size:12px;font-weight:600;color:#fff}
+  .deploy-sub{font-size:10px;color:var(--text2)}
+  .deploy-status{
+    font-size:10px;font-weight:600;
+    display:flex;align-items:center;gap:4px;
+  }
+  .deploy-status.enroute{color:var(--cyan)}
+  .deploy-status.arrived{color:var(--green);text-shadow:0 0 8px var(--greenglow)}
+  .deploy-status::before{content:'';width:5px;height:5px;border-radius:50%;background:currentColor}
+  .deploy-bar-bg{background:rgba(255,255,255,0.07);border-radius:2px;height:3px;margin-bottom:3px}
+  .deploy-bar{height:3px;border-radius:2px;transition:width 1s ease;background:var(--green)}
+  .deploy-bar.yellow{background:var(--yellow)}
+  .deploy-time{font-size:10px;color:var(--text3);text-align:right}
+
+  /* COMMUNICATIONS */
+  #comms-panel{flex:1;min-height:0;display:flex;flex-direction:column}
+  .comms-tabs{
+    display:flex;border-bottom:1px solid var(--border);
+    padding:0 12px;flex-shrink:0;
+  }
+  .comms-tab{
+    padding:7px 10px;font-size:10px;letter-spacing:.5px;text-transform:uppercase;
+    color:var(--text3);cursor:pointer;border-bottom:2px solid transparent;
+    transition:all .15s;
+  }
+  .comms-tab.active{color:var(--blue);border-bottom-color:var(--blue)}
+  .sms-list{overflow-y:auto;flex:1;padding:6px 0}
+  .sms-item{
+    padding:7px 12px;
+    border-bottom:1px solid rgba(255,255,255,0.03);
+  }
+  .sms-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:3px}
+  .sms-time{font-size:10px;color:var(--text3);font-family:var(--mono)}
+  .sms-to{font-size:11px;color:var(--text2)}
+  .sms-tag{font-size:9px;font-weight:700;letter-spacing:.5px;padding:1px 5px;border-radius:2px}
+  .sms-tag.SENT{background:rgba(255,214,0,0.1);color:var(--yellow);border:1px solid rgba(255,214,0,0.25)}
+  .sms-tag.DELIVERED{background:rgba(0,230,118,0.08);color:var(--green);border:1px solid rgba(0,230,118,0.2)}
+  .sms-msg{
+    font-size:11px;color:var(--text2);line-height:1.4;
+    display:flex;align-items:flex-start;gap:5px;
+  }
+  .sms-alert-icon{color:var(--red);font-size:10px;flex-shrink:0;margin-top:1px}
+
+  .view-full{
+    padding:8px 12px;border-top:1px solid var(--border);
+    font-size:10px;color:var(--blue);cursor:pointer;
+    display:flex;align-items:center;justify-content:space-between;
+    flex-shrink:0;
+  }
+
+  /* MAP STYLES */
+  .leaflet-container{background:#1a2030}
+  .danger-zone-ring{
+    border:2px solid rgba(255,59,59,0.6);
+    border-radius:50%;
+    animation:ringPulse 2.5s ease-in-out infinite;
+    pointer-events:none;
+  }
+  @keyframes ringPulse{
+    0%,100%{transform:scale(1);opacity:.8}
+    50%{transform:scale(1.04);opacity:.4}
+  }
+
+  .alappuzha-label{
+    background:none;border:none;
+    font-family:var(--ui);font-size:15px;font-weight:700;
+    color:#fff;letter-spacing:2px;text-transform:uppercase;
+    text-shadow:0 0 20px rgba(255,59,59,0.8),0 2px 4px rgba(0,0,0,.8);
+    white-space:nowrap;
+  }
+
+  /* Scrollbars */
+  ::-webkit-scrollbar{width:3px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.1);border-radius:2px}
+  ::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,0.2)}
+
+  /* Leaflet dark tile override */
+  .leaflet-tile{filter:brightness(0.6) saturate(0.7) hue-rotate(15deg)}
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div id="topbar">
+  <div class="logo-area">
+    <div class="logo-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#FF3B3B" stroke-width="2" stroke-linecap="round">
+        <circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/>
+        <line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/>
+        <line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/>
+      </svg>
+    </div>
+    <div class="logo-text">
+      <h1>SENTINEL AI</h1>
+      <p>Disaster Response System</p>
+    </div>
+  </div>
+
+  <div class="alert-strip">
+    <div class="alert-badge">▲ Live Disaster Alert</div>
+    <h2>KERALA FLOODS 2024 <span class="crit-badge">CRITICAL</span></h2>
+    <p id="current-time">Tues, 30 Jul 2024 · 11:42:30 AM IST</p>
+  </div>
+
+  <div class="stats-bar">
+    <div class="stat-item">
+      <div class="stat-label">People at Risk</div>
+      <div class="stat-value red" id="stat-risk">24,453</div>
+      <div class="stat-sub pos" id="stat-risk-sub">+3,248 last 30m</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-label">Volunteers Active</div>
+      <div class="stat-value" id="stat-vol">312</div>
+      <div class="stat-sub pos" id="stat-vol-sub">+86 deployed</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-label">Resources Deployed</div>
+      <div class="stat-value" id="stat-res">128</div>
+      <div class="stat-sub" id="stat-res-sub">+24 in transit</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-label">Lives Impacted (Est.)</div>
+      <div class="stat-value green" id="stat-lives">1,846</div>
+      <div class="stat-sub pos" id="stat-lives-sub">+245 last 30m</div>
+    </div>
+  </div>
+
+  <div class="system-status">
+    <div class="status-icon">
+      <span></span><span></span><span></span>
+    </div>
+    <div class="status-text">
+      <span>System Status</span>
+      <strong>OPERATIONAL</strong>
+    </div>
+  </div>
+</div>
+
+<!-- MAIN -->
+<div id="main">
+
+  <!-- LEFT SIDEBAR -->
+  <div id="left-sidebar" class="panel">
+
+    <!-- LIVE INCIDENT FEED header -->
+    <div id="incident-panel">
+      <div class="panel-header">
+        <div class="panel-title"><span class="dot"></span> Live Incident Feed</div>
+        <span class="see-all">SEE ALL</span>
+      </div>
+
+      <!-- Primary incident card -->
+      <div class="incident-main">
+        <div class="incident-header">
+          <div class="incident-icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FF3B3B" stroke-width="2" stroke-linecap="round"><path d="M12 2L2 20h20L12 2z"/><line x1="12" y1="9" x2="12" y2="14"/><circle cx="12" cy="17" r="1" fill="#FF3B3B" stroke="none"/></svg>
+          </div>
+          <div class="incident-title-area">
+            <div class="incident-name">EXTREME FLOOD DETECTED</div>
+            <div class="incident-loc">Alappuzha, Kerala</div>
+          </div>
+          <div class="incident-badge">CRITICAL</div>
+        </div>
+
+        <div class="severity-row">
+          <div>
+            <div class="severity-num">8.7<span>/10</span></div>
+            <div class="sev-label">SEVERITY SCORE</div>
+          </div>
+          <div class="severity-meta">
+            <div class="meta-row">
+              <span class="meta-label">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2z"/><path d="M12 6v7l4 2"/></svg>
+                Flood Level
+              </span>
+              <span class="meta-val hi">Very High</span>
+            </div>
+            <div class="meta-row">
+              <span class="meta-label">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+                Confidence
+              </span>
+              <span class="meta-val conf">92%</span>
+            </div>
+            <div class="meta-row">
+              <span class="meta-label">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 010 14.14"/><path d="M4.93 4.93a10 10 0 000 14.14"/></svg>
+                Source
+              </span>
+              <span class="meta-val">NOAA · USGS</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="timestamp-row">
+          <span class="ts-time">11:42 AM IST</span>
+          <span class="live-dot">LIVE</span>
+        </div>
+      </div>
+
+      <!-- Additional incidents -->
+      <div class="incident-list">
+        <div class="incident-item">
+          <div class="ii-icon orange">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#FF6D00" stroke-width="2.5"><path d="M12 2L2 20h20L12 2z"/></svg>
+          </div>
+          <div class="ii-body">
+            <div class="ii-title">Heavy Rainfall Warning</div>
+            <div class="ii-loc">Kottayam, Kerala</div>
+          </div>
+          <div class="ii-right">
+            <div class="ii-time">11:35 AM</div>
+            <div class="sev-tag HIGH">● HIGH</div>
+          </div>
+        </div>
+        <div class="incident-item">
+          <div class="ii-icon orange">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#FF6D00" stroke-width="2.5"><path d="M3 12h18M3 6c0 0 6 4 9 4s9-4 9-4"/></svg>
+          </div>
+          <div class="ii-body">
+            <div class="ii-title">River Overflow Alert</div>
+            <div class="ii-loc">Pamba River</div>
+          </div>
+          <div class="ii-right">
+            <div class="ii-time">11:28 AM</div>
+            <div class="sev-tag HIGH">● HIGH</div>
+          </div>
+        </div>
+        <div class="incident-item">
+          <div class="ii-icon yellow">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#FFD600" stroke-width="2.5"><path d="M12 2L2 20h20L12 2z"/></svg>
+          </div>
+          <div class="ii-body">
+            <div class="ii-title">Landslide Risk Detected</div>
+            <div class="ii-loc">Idukki, Kerala</div>
+          </div>
+          <div class="ii-right">
+            <div class="ii-time">11:20 AM</div>
+            <div class="sev-tag MEDIUM">● MEDIUM</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- AGENT ACTIVITY FEED -->
+    <div id="agent-panel">
+      <div class="panel-header">
+        <div class="panel-title"><span class="dot green"></span> Agent Activity Feed</div>
+        <span class="live-badge">LIVE</span>
+      </div>
+      <div class="agent-scroll" id="agent-scroll">
+        <!-- Populated by JS -->
+      </div>
+      <div class="system-logs">
+        <span>System Logs</span>
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+      </div>
+    </div>
+  </div>
+
+  <!-- CENTER: MAP + CHAT -->
+  <div id="center-area">
+    <div id="map-container">
+      <div id="map"></div>
+
+      <div class="map-top-bar">
+        MAP LAYERS
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+      </div>
+
+      <div class="map-tools">
+        <div class="map-tool-btn active" title="Incident">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 20h20L12 2z"/></svg>
+        </div>
+        <div class="map-tool-btn" title="Volunteers">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        </div>
+        <div class="map-tool-btn" title="Resources">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16"/></svg>
+        </div>
+        <div class="map-tool-btn" title="Safe Zones">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        </div>
+        <div class="map-tool-btn" title="Communications">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+        </div>
+      </div>
+
+      <div class="map-legend">
+        <div class="legend-item"><div class="l-dot" style="background:#FF3B3B"></div> Incident Location</div>
+        <div class="legend-item"><div class="l-dot" style="background:#00E676"></div> Volunteers</div>
+        <div class="legend-item"><div class="l-dot" style="background:#2979FF"></div> Resources</div>
+        <div class="legend-item"><div class="l-dash" style="color:#00E676"></div> Routes</div>
+        <div class="legend-item"><div class="l-dot" style="background:rgba(255,255,255,0.3);border:1px solid rgba(255,255,255,0.3)"></div> Safe Zones</div>
+      </div>
+    </div>
+
+    <!-- TRIAGE CHAT -->
+    <div id="chat-panel">
+      <div class="chat-header">
+        <div class="chat-title">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#00BCD4" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+          Triage Chat Assistant
+        </div>
+        <div class="chat-actions">
+          <div class="chat-action-btn">⋯</div>
+          <div class="chat-action-btn">✕</div>
+        </div>
+      </div>
+
+      <div class="chat-body">
+        <!-- Sessions -->
+        <div class="sessions-list">
+          <div class="sessions-header">
+            Active Sessions
+            <span class="sessions-count">3</span>
+          </div>
+          <div class="session-item active">
+            <div style="display:flex;gap:6px;align-items:center">
+              <div class="session-avatar">U</div>
+              <div>
+                <div class="session-user">User #1287</div>
+                <div class="session-loc">Alappuzha</div>
+                <div class="session-status">● Active</div>
+              </div>
+            </div>
+          </div>
+          <div class="session-item">
+            <div style="display:flex;gap:6px;align-items:center">
+              <div class="session-avatar">U</div>
+              <div>
+                <div class="session-user">User #1288</div>
+                <div class="session-loc">Alappuzha</div>
+                <div class="session-status">● Active</div>
+              </div>
+            </div>
+          </div>
+          <div class="session-item">
+            <div style="display:flex;gap:6px;align-items:center">
+              <div class="session-avatar">U</div>
+              <div>
+                <div class="session-user">User #1289</div>
+                <div class="session-loc">Changanassery</div>
+                <div class="session-status">● Active</div>
+              </div>
+            </div>
+          </div>
+          <div class="view-sessions">
+            VIEW ALL SESSIONS
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 18l6-6-6-6"/></svg>
+          </div>
+        </div>
+
+        <!-- Messages -->
+        <div class="chat-messages" id="chat-messages">
+          <div class="msg user">
+            <div class="msg-avatar">U</div>
+            <div class="msg-content">
+              <div class="msg-header">
+                <span class="msg-name">User #1287</span>
+                <span class="msg-time">11:42 AM</span>
+              </div>
+              <div class="msg-bubble">I feel dizzy and very weak. I haven't eaten or had water since morning.</div>
+            </div>
+          </div>
+          <div class="msg ai">
+            <div class="msg-avatar">AI</div>
+            <div class="msg-content">
+              <div class="msg-header">
+                <span class="msg-name">Triage Agent</span>
+                <span class="msg-time">11:42 AM</span>
+              </div>
+              <div class="msg-bubble">
+                You might be experiencing dehydration.<br>
+                Please drink water and rest. If dizziness continues, seek medical help.
+                <div class="confidence-tag">CONFIDENCE: 82%</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="chat-input-row">
+        <input class="chat-input" id="chat-input" type="text" placeholder="Type your message...">
+        <div class="chat-send" id="chat-send-btn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT SIDEBAR -->
+  <div id="right-sidebar">
+
+    <!-- RESOURCE ALLOCATION -->
+    <div id="resource-panel">
+      <div class="panel-header">
+        <div class="panel-title"><span class="dot"></span> Resource Allocation</div>
+        <span class="see-all">SEE ALL</span>
+      </div>
+      <div class="resource-grid">
+        <div class="res-card">
+          <div class="res-icon" style="background:rgba(0,230,118,0.1);border:1px solid rgba(0,230,118,0.2)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#00E676" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+          </div>
+          <div class="res-count" id="res-vol">32</div>
+          <div class="res-label">VOLUNTEERS</div>
+          <div class="res-sub">Deployed</div>
+        </div>
+        <div class="res-card">
+          <div class="res-icon" style="background:rgba(255,109,0,0.1);border:1px solid rgba(255,109,0,0.2)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#FF6D00" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16"/></svg>
+          </div>
+          <div class="res-count" id="res-kits">48</div>
+          <div class="res-label">KITS</div>
+          <div class="res-sub">In Transit</div>
+        </div>
+        <div class="res-card">
+          <div class="res-icon" style="background:rgba(41,121,255,0.1);border:1px solid rgba(41,121,255,0.2)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2979FF" stroke-width="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+          </div>
+          <div class="res-count" id="res-veh">12</div>
+          <div class="res-label">VEHICLES</div>
+          <div class="res-sub">Deployed</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ACTIVE DEPLOYMENTS -->
+    <div id="deploy-panel">
+      <div class="panel-header">
+        <div class="panel-title">Active Deployments</div>
+      </div>
+      <div class="deploy-list">
+        <div class="deploy-item">
+          <div class="deploy-header">
+            <div class="deploy-icon">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#00E676" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+            </div>
+            <div class="deploy-info">
+              <div class="deploy-name">Team Alpha</div>
+              <div class="deploy-sub">8 Volunteers · 2 Boats</div>
+            </div>
+            <div class="deploy-status enroute">En Route</div>
+          </div>
+          <div class="deploy-bar-bg"><div class="deploy-bar" id="bar-alpha" style="width:68%"></div></div>
+          <div class="deploy-time">12 mins</div>
+        </div>
+        <div class="deploy-item">
+          <div class="deploy-header">
+            <div class="deploy-icon">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#00E676" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+            </div>
+            <div class="deploy-info">
+              <div class="deploy-name">Team Bravo</div>
+              <div class="deploy-sub">10 Volunteers · 1 Boat · 10 Kits</div>
+            </div>
+            <div class="deploy-status enroute">En Route</div>
+          </div>
+          <div class="deploy-bar-bg"><div class="deploy-bar yellow" id="bar-bravo" style="width:42%"></div></div>
+          <div class="deploy-time">18 mins</div>
+        </div>
+        <div class="deploy-item">
+          <div class="deploy-header">
+            <div class="deploy-icon">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#00E676" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+            </div>
+            <div class="deploy-info">
+              <div class="deploy-name">Team Charlie</div>
+              <div class="deploy-sub">6 Volunteers · 5 Kits</div>
+            </div>
+            <div class="deploy-status arrived">Arrived</div>
+          </div>
+          <div class="deploy-bar-bg"><div class="deploy-bar" id="bar-charlie" style="width:100%"></div></div>
+          <div class="deploy-time">On Site</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- COMMUNICATIONS -->
+    <div id="comms-panel">
+      <div class="panel-header">
+        <div class="panel-title"><span class="dot"></span> Communications</div>
+        <span class="live-badge">LIVE</span>
+      </div>
+      <div class="comms-tabs">
+        <div class="comms-tab active">SMS Outbox</div>
+        <div class="comms-tab">Alert History</div>
+      </div>
+      <div class="sms-list" id="sms-list">
+        <!-- Populated by JS -->
+      </div>
+      <div class="view-full">
+        VIEW FULL COMMUNICATION LOG
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     SENTINEL AI  –  BACKEND INTEGRATION  (minimal, safe)
+     Only replaces data sources; zero UI changes.
+     ═══════════════════════════════════════════════════════════ -->
+<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+<script>
+// ─── Backend configuration ──────────────────────────────────────
+// Change BACKEND_URL to match your server address/port.
+const BACKEND_URL = 'http://localhost:3001';
+const SOCKET_URL  = BACKEND_URL;
+
+// ─── Boot: connect + trigger pipeline ───────────────────────────
+const socket = io(SOCKET_URL, { transports: ['websocket', 'polling'] });
+
+socket.on('connect', () => {
+  console.log('[Sentinel] WebSocket connected — id:', socket.id);
+  // Auto-start the agent pipeline on page load
+  fetch(`${BACKEND_URL}/start-demo`, { method: 'POST' })
+    .then(r => r.json())
+    .then(d => console.log('[Sentinel] Pipeline:', d.message))
+    .catch(() => console.warn('[Sentinel] /start-demo unreachable — running in standalone mode'));
+});
+
+socket.on('disconnect', () => console.warn('[Sentinel] WebSocket disconnected'));
+socket.on('connect_error', () => console.warn('[Sentinel] Cannot reach backend — running standalone'));
+
+// ─── agent_log → activity feed ──────────────────────────────────
+socket.on('agent_log', log => {
+  const scroll = document.getElementById('agent-scroll');
+  if (!scroll) return;
+  const color = { sentinel:'#7C4DFF', resource:'#00BCD4', comms:'#FF6D00', triage:'#00E676', calc:'#FFD600' }[log.cls] || '#888';
+  const item = document.createElement('div');
+  item.className = 'agent-item';
+  item.innerHTML = `
+    <div class="agent-icon" style="background:${color}18;border:1px solid ${color}33">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M1.05 12H7M17 12h5.95M12 1.05V7M12 17v5.95"/></svg>
+    </div>
+    <div class="agent-body">
+      <div class="agent-header">
+        <span class="agent-time">${log.time}</span>
+        <span class="agent-name ${log.cls}">${log.agent}</span>
+      </div>
+      <div class="agent-msg">${log.msg}</div>
+    </div>`;
+  scroll.appendChild(item);
+  requestAnimationFrame(() => item.classList.add('visible'));
+  while (scroll.children.length > 25) scroll.removeChild(scroll.firstChild);
+  scroll.scrollTop = scroll.scrollHeight;
+});
+
+// ─── sms_update → SMS list ──────────────────────────────────────
+socket.on('sms_update', sms => {
+  // Prepend to SMS_LOGS array so the existing renderSMS() works
+  SMS_LOGS.unshift({ time: sms.time, to: sms.to, msg: sms.msg, status: sms.status });
+  if (SMS_LOGS.length > 10) SMS_LOGS.pop();
+  renderSMS();
+});
+
+// ─── stats_update → animated counters ───────────────────────────
+socket.on('stats_update', stats => {
+  const r = document.getElementById('stat-risk');
+  const v = document.getElementById('stat-vol');
+  const res = document.getElementById('stat-res');
+  const l = document.getElementById('stat-lives');
+  if (r)   animateNum(r,   parseInt(r.textContent.replace(/,/g,'')),   stats.peopleAtRisk,       n => n.toLocaleString());
+  if (v)   animateNum(v,   parseInt(v.textContent),                    stats.volunteersActive,    n => n.toString());
+  if (res) animateNum(res, parseInt(res.textContent),                  stats.resourcesDeployed,   n => n.toString());
+  if (l)   animateNum(l,   parseInt(l.textContent.replace(/,/g,'')),   stats.livesImpacted,       n => n.toLocaleString());
+});
+
+// ─── map_update → Leaflet markers / routes ──────────────────────
+const _liveRoutes = [];   // track so we don't duplicate
+
+socket.on('map_update', data => {
+  if (data.type === 'routes_ready' && data.routes) {
+    // Clear old live routes
+    _liveRoutes.forEach(l => map.removeLayer(l));
+    _liveRoutes.length = 0;
+    // Draw updated routes
+    data.routes.forEach(r => {
+      const line = L.polyline([r.from, r.to], {
+        color: '#00E676', weight: 1.5, dashArray: '6 4', opacity: 0.7
+      }).addTo(map);
+      _liveRoutes.push(line);
+    });
+  }
+});
+
+// ─── chat → replace mock AI with real backend ───────────────────
+// Override sendChatMsg to call POST /chat instead of using AI_RESPONSES[]
+(function patchChat() {
+  const origSend = window.sendChatMsg;
+  window.sendChatMsg = function () {
+    const chatInput  = document.getElementById('chat-input');
+    const chatMessages = document.getElementById('chat-messages');
+    const msg = chatInput ? chatInput.value.trim() : '';
+    if (!msg) return;
+
+    // Render user bubble (same DOM as original)
+    const userDiv = document.createElement('div');
+    userDiv.className = 'msg user';
+    userDiv.innerHTML = `
+      <div class="msg-avatar">U</div>
+      <div class="msg-content">
+        <div class="msg-header" style="flex-direction:row-reverse">
+          <span class="msg-name" style="color:var(--text2)">User</span>
+          <span class="msg-time" style="font-family:var(--mono)">${new Date().toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})}</span>
+        </div>
+        <div class="msg-bubble" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.08);border-bottom-right-radius:2px">${msg}</div>
+      </div>`;
+    chatMessages.appendChild(userDiv);
+    chatInput.value = '';
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+
+    // Call backend
+    fetch(`${BACKEND_URL}/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: msg }),
+    })
+      .then(r => r.json())
+      .then(data => {
+        const aiDiv = document.createElement('div');
+        aiDiv.className = 'msg ai';
+        aiDiv.innerHTML = `
+          <div class="msg-avatar">AI</div>
+          <div class="msg-content">
+            <div class="msg-header">
+              <span class="msg-name" style="color:var(--green)">Triage Agent</span>
+              <span class="msg-time" style="font-family:var(--mono)">${new Date().toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})}</span>
+            </div>
+            <div class="msg-bubble" style="background:rgba(0,230,118,0.06);border:1px solid rgba(0,230,118,0.12);border-bottom-left-radius:2px">
+              ${(data.reply||'').replace(/\n/g,'<br>')}
+              <div class="confidence-tag">CONFIDENCE: ${data.confidence||82}%</div>
+            </div>
+          </div>`;
+        chatMessages.appendChild(aiDiv);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+      })
+      .catch(() => {
+        // Graceful fallback: use original mock behaviour
+        if (typeof origSend === 'function') origSend();
+      });
+  };
+  // Re-wire button & Enter key
+  setTimeout(() => {
+    const btn = document.getElementById('chat-send-btn');
+    const inp = document.getElementById('chat-input');
+    if (btn) { btn.onclick = null; btn.addEventListener('click', window.sendChatMsg); }
+    if (inp) { inp.onkeydown = null; inp.addEventListener('keydown', e => { if (e.key === 'Enter') window.sendChatMsg(); }); }
+  }, 0);
+})();
+</script>
+<script>
+// ============================================================
+// MOCK DATA
+// ============================================================
+const VOLUNTEERS = [
+  {lat:9.52,lng:76.42,name:'Team Alpha Lead'},{lat:9.50,lng:76.48,name:'Rajan K.'},{lat:9.55,lng:76.40,name:'Meera P.'},
+  {lat:9.58,lng:76.52,name:'Arun S.'},{lat:9.46,lng:76.36,name:'Deepa V.'},{lat:9.44,lng:76.44,name:'Suresh N.'},
+  {lat:9.62,lng:76.46,name:'Priya M.'},{lat:9.40,lng:76.38,name:'Vijay T.'},{lat:9.56,lng:76.56,name:'Latha R.'},
+  {lat:9.48,lng:76.60,name:'Mohan D.'},{lat:9.64,lng:76.38,name:'Sindhu A.'},{lat:9.38,lng:76.50,name:'Rahul B.'},
+  {lat:9.54,lng:76.34,name:'Geetha C.'},{lat:9.42,lng:76.54,name:'Bijoy K.'},{lat:9.66,lng:76.44,name:'Anjali M.'},
+];
+
+const RESOURCES = [
+  {lat:9.51,lng:76.45,name:'Relief Camp A'},{lat:9.47,lng:76.41,name:'Medical Unit 1'},
+  {lat:9.55,lng:76.50,name:'Supply Depot'},{lat:9.43,lng:76.47,name:'Boat Station'},
+  {lat:9.59,lng:76.38,name:'Helicopter Pad'},{lat:9.45,lng:76.57,name:'Water Purifier'},
+];
+
+const AGENT_LOGS = [
+  {time:'11:42:30',agent:'Sentinel Agent',cls:'sentinel',msg:'Real-time data anomaly detected from NOAA',icon:'🔵'},
+  {time:'11:42:31',agent:'Sentinel Agent',cls:'sentinel',msg:'Severity score calculated: 8.7/10',icon:'🔴'},
+  {time:'11:42:32',agent:'Resource Matcher Agent',cls:'resource',msg:'Scanning for nearest volunteers & resources',icon:'🔵'},
+  {time:'11:42:34',agent:'Resource Matcher Agent',cls:'resource',msg:'Found 32 volunteers within 25 km',icon:'🟢'},
+  {time:'11:42:35',agent:'Comms Agent',cls:'comms',msg:'Dispatching SMS to 32 volunteers',icon:'🟠'},
+  {time:'11:42:36',agent:'Triage Chat Agent',cls:'triage',msg:'Triage chat session started',icon:'🟢'},
+  {time:'11:42:37',agent:'Triage Chat Agent',cls:'triage',msg:'Initial response: 3 people reporting symptoms',icon:'🟢'},
+  {time:'11:42:38',agent:'Sentinel Agent',cls:'sentinel',msg:'Monitoring river levels: Pamba +2.1m',icon:'🔵'},
+  {time:'11:42:39',agent:'Resource Matcher Agent',cls:'resource',msg:'Route optimization complete for Team Alpha',icon:'🟢'},
+  {time:'11:42:40',agent:'Comms Agent',cls:'comms',msg:'SMS delivery confirmed: 28/32 volunteers',icon:'🟠'},
+];
+
+const SMS_LOGS = [
+  {time:'11:42 AM',to:'To: +91 98765 43210',msg:'Deploy to zone 3, Alappuzha. Bring 10 water kits.',status:'SENT'},
+  {time:'11:42 AM',to:'To: +91 91234 56789',msg:'Deploy to zone 3, Alappuzha. Bring 10 water kits.',status:'SENT'},
+  {time:'11:41 AM',to:'To: +91 99987 66554',msg:'Deploy to zone 3, Alappuzha. Bring 10 water kits.',status:'DELIVERED'},
+  {time:'11:41 AM',to:'To: +91 88991 12233',msg:'Acknowledged. On the way.',status:'DELIVERED'},
+  {time:'11:40 AM',to:'To: +91 77665 44332',msg:'Emergency alert: Proceed to Alappuzha medical camp.',status:'DELIVERED'},
+  {time:'11:40 AM',to:'To: +91 66778 99001',msg:'Flood kit dispatch confirmed. ETA 15 mins.',status:'DELIVERED'},
+];
+
+const AI_RESPONSES = [
+  "You might be experiencing dehydration.\nPlease drink water and rest. If dizziness continues, seek medical help.",
+  "Help is on the way. Stay on the second floor or higher ground.\nAvoid contact with floodwater as it may be contaminated.",
+  "Medical team has been alerted to your location.\nKeep calm and signal responders from your window using a bright cloth.",
+  "First aid kit location confirmed at relief camp 200m north.\nA volunteer will reach you within 12 minutes.",
+];
+
+// ============================================================
+// INIT MAP
+// ============================================================
+const map = L.map('map', {
+  center:[9.4981,76.3388],
+  zoom:11,
+  zoomControl:false,
+  attributionControl:false,
+});
+
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{
+  maxZoom:18,subdomains:'abcd'
+}).addTo(map);
+
+L.control.zoom({position:'bottomright'}).addTo(map);
+
+// Danger zone — multiple concentric circles with pulsing animation
+const dangerCenter = [9.4981,76.3388];
+const dangerCircle = L.circle(dangerCenter,{
+  radius:18000,color:'#FF3B3B',fillColor:'#FF3B3B',
+  fillOpacity:0.12,weight:1.5,dashArray:'',className:'danger-pulse-outer'
+}).addTo(map);
+
+const dangerCircleInner = L.circle(dangerCenter,{
+  radius:11000,color:'#FF3B3B',fillColor:'#FF3B3B',
+  fillOpacity:0.2,weight:2,className:'danger-pulse-mid'
+}).addTo(map);
+
+// Pulse animation via CSS
+const style = document.createElement('style');
+style.textContent = `
+  .danger-pulse-outer,.danger-pulse-mid{
+    animation:dangerAnim 2.5s ease-in-out infinite;
+    transform-origin:center;
+  }
+  .danger-pulse-mid{animation-duration:2s;animation-delay:0.3s}
+  @keyframes dangerAnim{0%,100%{opacity:0.8}50%{opacity:0.3}}
+`;
+document.head.appendChild(style);
+
+// Center label
+const alappuzhaLabel = L.divIcon({
+  className:'alappuzha-label',
+  html:`<div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
+    <div style="background:rgba(255,59,59,0.2);border:2px solid rgba(255,59,59,0.7);border-radius:50%;width:40px;height:40px;display:flex;align-items:center;justify-content:center;">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="rgba(255,59,59,0.9)" stroke="none"><path d="M12 2L2 20h20L12 2z"/></svg>
+    </div>
+    <div style="background:rgba(0,0,0,0.7);padding:2px 8px;border-radius:3px;font-size:14px;letter-spacing:3px;color:#fff;font-family:'Exo 2',sans-serif;font-weight:700">ALAPPUZHA</div>
+  </div>`,
+  iconSize:[120,60],iconAnchor:[60,30],
+});
+L.marker(dangerCenter,{icon:alappuzhaLabel}).addTo(map);
+
+// Volunteer markers
+function makeVolIcon(){
+  return L.divIcon({
+    className:'',
+    html:`<div style="width:22px;height:22px;border-radius:50%;background:rgba(0,230,118,0.2);border:2px solid #00E676;display:flex;align-items:center;justify-content:center;box-shadow:0 0 10px rgba(0,230,118,0.4)">
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#00E676" stroke-width="2.5"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+    </div>`,
+    iconSize:[22,22],iconAnchor:[11,11]
+  });
+}
+function makeResIcon(){
+  return L.divIcon({
+    className:'',
+    html:`<div style="width:22px;height:22px;border-radius:50%;background:rgba(41,121,255,0.2);border:2px solid #2979FF;display:flex;align-items:center;justify-content:center;box-shadow:0 0 10px rgba(41,121,255,0.4)">
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#2979FF" stroke-width="2.5"><rect x="2" y="7" width="20" height="14" rx="2"/></svg>
+    </div>`,
+    iconSize:[22,22],iconAnchor:[11,11]
+  });
+}
+
+const volMarkers=[];
+VOLUNTEERS.forEach(v=>{
+  const m=L.marker([v.lat,v.lng],{icon:makeVolIcon()}).addTo(map);
+  volMarkers.push(m);
+});
+RESOURCES.forEach(r=>{
+  L.marker([r.lat,r.lng],{icon:makeResIcon()}).addTo(map);
+});
+
+// Routes (dashed lines from center to volunteers)
+const routeCoords = [
+  [[9.4981,76.3388],[9.52,76.42]],
+  [[9.4981,76.3388],[9.50,76.48]],
+  [[9.4981,76.3388],[9.55,76.40]],
+  [[9.4981,76.3388],[9.46,76.36]],
+  [[9.4981,76.3388],[9.48,76.60]],
+];
+routeCoords.forEach(coords=>{
+  L.polyline(coords,{
+    color:'#00E676',weight:1.5,dashArray:'6 4',opacity:0.6
+  }).addTo(map);
+});
+
+// ============================================================
+// AGENT FEED
+// ============================================================
+const agentScroll = document.getElementById('agent-scroll');
+const agentIconColors = {
+  sentinel:'#7C4DFF',resource:'#00BCD4',comms:'#FF6D00',triage:'#00E676',calc:'#FFD600'
+};
+
+AGENT_LOGS.forEach((log,i)=>{
+  setTimeout(()=>{
+    const item = document.createElement('div');
+    item.className='agent-item';
+    const color = agentIconColors[log.cls]||'#888';
+    item.innerHTML=`
+      <div class="agent-icon" style="background:${color}18;border:1px solid ${color}33">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M1.05 12H7M17 12h5.95M12 1.05V7M12 17v5.95"/></svg>
+      </div>
+      <div class="agent-body">
+        <div class="agent-header">
+          <span class="agent-time">${log.time}</span>
+          <span class="agent-name ${log.cls}">${log.agent}</span>
+        </div>
+        <div class="agent-msg">${log.msg}</div>
+      </div>
+    `;
+    agentScroll.appendChild(item);
+    requestAnimationFrame(()=>item.classList.add('visible'));
+    agentScroll.scrollTop=agentScroll.scrollHeight;
+  },i*600+200);
+});
+
+// Continuous log stream after initial
+let logIdx=0;
+setInterval(()=>{
+  logIdx=(logIdx+1)%AGENT_LOGS.length;
+  const log=AGENT_LOGS[logIdx];
+  const now=new Date();
+  const ts=`${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}:${now.getSeconds().toString().padStart(2,'0')}`;
+  const item=document.createElement('div');
+  item.className='agent-item';
+  const color=agentIconColors[log.cls]||'#888';
+  item.innerHTML=`
+    <div class="agent-icon" style="background:${color}18;border:1px solid ${color}33">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M1.05 12H7M17 12h5.95M12 1.05V7M12 17v5.95"/></svg>
+    </div>
+    <div class="agent-body">
+      <div class="agent-header">
+        <span class="agent-time">${ts}</span>
+        <span class="agent-name ${log.cls}">${log.agent}</span>
+      </div>
+      <div class="agent-msg">${log.msg}</div>
+    </div>
+  `;
+  agentScroll.appendChild(item);
+  requestAnimationFrame(()=>item.classList.add('visible'));
+  while(agentScroll.children.length>20)agentScroll.removeChild(agentScroll.firstChild);
+  agentScroll.scrollTop=agentScroll.scrollHeight;
+},3500);
+
+// ============================================================
+// SMS LIST
+// ============================================================
+function renderSMS(){
+  const list=document.getElementById('sms-list');
+  list.innerHTML='';
+  SMS_LOGS.forEach(sms=>{
+    const div=document.createElement('div');
+    div.className='sms-item';
+    div.innerHTML=`
+      <div class="sms-top">
+        <span class="sms-time">${sms.time}</span>
+        <span class="sms-to">${sms.to}</span>
+        <span class="sms-tag ${sms.status}">${sms.status}</span>
+      </div>
+      <div class="sms-msg"><span class="sms-alert-icon">▲</span>${sms.msg}</div>
+    `;
+    list.appendChild(div);
+  });
+}
+renderSMS();
+
+// Add new SMS periodically
+setInterval(()=>{
+  const phones=['98765 12345','91234 98765','77665 11234','88990 55443','66778 34521'];
+  const msgs=['Proceeding to zone 4. ETA 8 mins.','Medical supplies loaded. En route.','Boat crew dispatched from Kottayam.','Water purification unit activated.','Evacuation complete: 12 families.'];
+  const statuses=['SENT','DELIVERED'];
+  const now=new Date();
+  const ts=`${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')} AM`;
+  SMS_LOGS.unshift({
+    time:ts,
+    to:`To: +91 ${phones[Math.floor(Math.random()*phones.length)]}`,
+    msg:msgs[Math.floor(Math.random()*msgs.length)],
+    status:statuses[Math.floor(Math.random()*statuses.length)]
+  });
+  if(SMS_LOGS.length>10)SMS_LOGS.pop();
+  renderSMS();
+},4000);
+
+// ============================================================
+// STAT UPDATES
+// ============================================================
+function animateNum(el,start,end,fmt){
+  const step=(end-start)/30;
+  let cur=start;
+  const t=setInterval(()=>{
+    cur+=step;
+    if((step>0&&cur>=end)||(step<0&&cur<=end)){cur=end;clearInterval(t)}
+    el.textContent=fmt(Math.round(cur));
+  },60);
+}
+
+let riskVal=24453,volVal=312,resVal=128,livesVal=1846;
+setInterval(()=>{
+  riskVal+=Math.floor(Math.random()*50)+5;
+  volVal+=Math.floor(Math.random()*3);
+  resVal+=Math.floor(Math.random()*2);
+  livesVal+=Math.floor(Math.random()*20)+5;
+  animateNum(document.getElementById('stat-risk'),riskVal-30,riskVal,n=>n.toLocaleString());
+  animateNum(document.getElementById('stat-vol'),volVal-2,volVal,n=>n.toString());
+  animateNum(document.getElementById('stat-res'),resVal-1,resVal,n=>n.toString());
+  animateNum(document.getElementById('stat-lives'),livesVal-15,livesVal,n=>n.toLocaleString());
+},5000);
+
+// Progress bars animation
+let alphaBar=68,bravoBar=42;
+setInterval(()=>{
+  alphaBar=Math.min(alphaBar+Math.random()*3,100);
+  bravoBar=Math.min(bravoBar+Math.random()*2,100);
+  document.getElementById('bar-alpha').style.width=alphaBar+'%';
+  document.getElementById('bar-bravo').style.width=bravoBar+'%';
+},3000);
+
+// ============================================================
+// CHAT
+// ============================================================
+let aiRespIdx=0;
+const chatMessages=document.getElementById('chat-messages');
+const chatInput=document.getElementById('chat-input');
+const chatSend=document.getElementById('chat-send-btn');
+
+function sendChatMsg(){
+  const msg=chatInput.value.trim();
+  if(!msg)return;
+  const userDiv=document.createElement('div');
+  userDiv.className='msg user';
+  userDiv.innerHTML=`
+    <div class="msg-avatar">U</div>
+    <div class="msg-content">
+      <div class="msg-header" style="flex-direction:row-reverse">
+        <span class="msg-name" style="color:var(--text2)">User</span>
+        <span class="msg-time" style="font-family:var(--mono)">${new Date().toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})}</span>
+      </div>
+      <div class="msg-bubble" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.08);border-bottom-right-radius:2px">${msg}</div>
+    </div>
+  `;
+  chatMessages.appendChild(userDiv);
+  chatInput.value='';
+  chatMessages.scrollTop=chatMessages.scrollHeight;
+
+  setTimeout(()=>{
+    const resp=AI_RESPONSES[aiRespIdx%AI_RESPONSES.length];
+    aiRespIdx++;
+    const conf=75+Math.floor(Math.random()*20);
+    const aiDiv=document.createElement('div');
+    aiDiv.className='msg ai';
+    aiDiv.innerHTML=`
+      <div class="msg-avatar">AI</div>
+      <div class="msg-content">
+        <div class="msg-header">
+          <span class="msg-name" style="color:var(--green)">Triage Agent</span>
+          <span class="msg-time" style="font-family:var(--mono)">${new Date().toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})}</span>
+        </div>
+        <div class="msg-bubble" style="background:rgba(0,230,118,0.06);border:1px solid rgba(0,230,118,0.12);border-bottom-left-radius:2px">
+          ${resp.replace('\n','<br>')}
+          <div class="confidence-tag">CONFIDENCE: ${conf}%</div>
+        </div>
+      </div>
+    `;
+    chatMessages.appendChild(aiDiv);
+    chatMessages.scrollTop=chatMessages.scrollHeight;
+  },900+Math.random()*600);
+}
+
+chatSend.addEventListener('click',sendChatMsg);
+chatInput.addEventListener('keydown',e=>{if(e.key==='Enter')sendChatMsg()});
+
+// ============================================================
+// CLOCK
+// ============================================================
+function updateClock(){
+  const now=new Date();
+  const days=['Sun','Mon','Tue','Wed','Thur','Fri','Sat'];
+  const months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const day=days[now.getDay()];
+  const mon=months[now.getMonth()];
+  const d=now.getDate();
+  const yr=now.getFullYear();
+  const h=now.getHours().toString().padStart(2,'0');
+  const m=now.getMinutes().toString().padStart(2,'0');
+  const s=now.getSeconds().toString().padStart(2,'0');
+  document.getElementById('current-time').textContent=
+    `${day}, ${d} ${mon} ${yr} · ${h}:${m}:${s} AM IST`;
+}
+setInterval(updateClock,1000);
+updateClock();
+</script>
+</body>
+</html>
