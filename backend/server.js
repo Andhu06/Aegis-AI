@@ -1,19 +1,32 @@
 // ============================================================
 //  server.js  –  Sentinel AI Backend Entry Point
-//  Express + Socket.IO + Agent Pipeline
+//  dotenv MUST be first — before any require that reads process.env
 // ============================================================
 
-require("dotenv").config();
+const path = require("path");
+require("dotenv").config({ path: path.resolve(__dirname, ".env") });
+
+console.log("SMS system removed - using backend only");
+
+// ── BOOT ENV CHECK ─────────────────────────────────────────────
+console.log("=== BOOT ENV CHECK ===");
+console.log("WORKING DIR     :", process.cwd());
+console.log("__dirname       :", __dirname);
+console.log("ENV FILE        :", path.resolve(__dirname, ".env"));
+console.log("======================");
 
 const express    = require("express");
 const http       = require("http");
 const { Server } = require("socket.io");
 const cors       = require("cors");
-const path       = require("path");
 
-const apiRoutes  = require("./routes/api");
-const chatRoutes = require("./routes/chat");
-const { startStatsTicker, startLogTicker, startSmsTicker } = require("./agents/pipeline");
+const apiRoutes              = require("./routes/api");
+const chatRoutes             = require("./routes/chat");
+const hospitalRoutes         = require("./routes/hospitals");
+const alertRoutes            = require("./routes/alert");
+const earthquakeRoutes       = require("./routes/earthquakes");
+const { startStatsTicker, startLogTicker } = require("./agents/pipeline");
+const { startEarthquakeDetector }          = require("./services/earthquakeDetector");
 
 // ── App setup ─────────────────────────────────────────────────
 const app    = express();
@@ -24,29 +37,20 @@ const CORS_ORIGIN = process.env.CORS_ORIGIN || "*";
 // ── Middleware ─────────────────────────────────────────────────
 app.use(cors({ origin: CORS_ORIGIN }));
 app.use(express.json());
-
-// Serve the frontend HTML directly from /public (or / if a frontend
-// file is placed alongside server.js)
 app.use(express.static(path.join(__dirname, "public")));
 
 // ── Socket.IO setup ────────────────────────────────────────────
 const io = new Server(server, {
-  cors: {
-    origin: CORS_ORIGIN,
-    methods: ["GET", "POST"],
-  },
-  // Allow transport fallback
+  cors: { origin: CORS_ORIGIN, methods: ["GET", "POST"] },
   transports: ["websocket", "polling"],
 });
 
-// Make io accessible inside route handlers via req.app.get("io")
 app.set("io", io);
 
 // ── WebSocket connection handler ───────────────────────────────
 io.on("connection", (socket) => {
   console.log(`[WS] Client connected: ${socket.id}`);
 
-  // Send current state snapshot immediately on connect
   const { getState } = require("./data/state");
   const state = getState();
 
@@ -57,14 +61,12 @@ io.on("connection", (socket) => {
     resources:   state.resources,
     deployments: state.deployments,
     logs:        state.logs.slice(0, 20),
-    smslogs:     state.smslogs.slice(0, 10),
   });
 
   socket.on("disconnect", (reason) => {
     console.log(`[WS] Client disconnected: ${socket.id} — ${reason}`);
   });
 
-  // Allow client to manually trigger demo from socket
   socket.on("trigger_demo", () => {
     const { runPipeline } = require("./agents/pipeline");
     runPipeline(io).catch((e) => console.error("[Pipeline socket trigger]", e.message));
@@ -72,14 +74,16 @@ io.on("connection", (socket) => {
 });
 
 // ── REST Routes ────────────────────────────────────────────────
-app.use("/", apiRoutes);    // GET /state, POST /start-demo, POST /reset, GET /health
-app.use("/chat", chatRoutes); // POST /chat
+app.use("/", apiRoutes);
+app.use("/chat", chatRoutes);
+app.use("/api/hospitals", hospitalRoutes);
+app.use("/api/alert", alertRoutes);
+app.use("/api/earthquakes", earthquakeRoutes);
 
 // ── Background tickers ────────────────────────────────────────
-// These keep the UI alive with live data even without a pipeline run
 startStatsTicker(io);
 startLogTicker(io);
-startSmsTicker(io);
+startEarthquakeDetector(io);
 
 // ── Start ──────────────────────────────────────────────────────
 server.listen(PORT, () => {
@@ -93,7 +97,10 @@ server.listen(PORT, () => {
 ║          POST /chat                          ║
 ║          GET  /state                         ║
 ║          GET  /health                        ║
-║  Mode  → ${process.env.ANTHROPIC_API_KEY ? "Claude API (LIVE)" : "Mock AI (no API key)       "}       ║
+║          GET  /api/hospitals?lat=&lng=       ║
+║          POST /api/alert                     ║
+║          GET  /api/earthquakes               ║
+║  Mode  → ${process.env.ANTHROPIC_API_KEY ? "Claude API (LIVE)" : "Mock AI (no API key)"}  ║
 ╚══════════════════════════════════════════════╝
   `);
 });

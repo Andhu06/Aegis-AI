@@ -1,0 +1,4234 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ReliefAI — Live Operations</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=DM+Sans:wght@300;400;500;600&display=swap');
+    @import url('https://unpkg.com/leaflet@1.9.4/dist/leaflet.css');
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0
+    }
+
+    :root {
+      --red: #E24B4A;
+      --red-dark: #A32D2D;
+      --red-pale: #FCEBEB;
+      --blue: #378ADD;
+      --blue-dark: #0C447C;
+      --blue-pale: #E6F1FB;
+      --green: #639922;
+      --green-dark: #27500A;
+      --green-pale: #EAF3DE;
+      --amber: #EF9F27;
+      --amber-dark: #633806;
+      --amber-pale: #FAEEDA;
+      --bg: #0D0F12;
+      --bg2: #131619;
+      --bg3: #1A1D22;
+      --bg4: #222630;
+      --border: #2A2D35;
+      --border2: #333844;
+      --text: #E8ECF0;
+      --text2: #8A93A0;
+      --text3: #4A5260;
+      --mono: 'IBM Plex Mono', monospace;
+      --sans: 'DM Sans', sans-serif;
+      --sentinel: #7F77DD;
+      --calc: #1D9E75;
+      --resource: #378ADD;
+      --comms: #EF9F27;
+      --triage: #E24B4A;
+    }
+
+    html,
+    body {
+      height: 100%;
+      overflow: hidden;
+      background: var(--bg);
+      font-family: var(--sans)
+    }
+
+    /* ── TOPBAR ── */
+    .topbar {
+      height: 48px;
+      background: var(--bg2);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      position: relative;
+      z-index: 100;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px
+    }
+
+    .logo-icon {
+      width: 26px;
+      height: 26px;
+      background: var(--red);
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center
+    }
+
+    .logo-icon svg {
+      width: 14px;
+      height: 14px
+    }
+
+    .logo-text {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text);
+      letter-spacing: -0.02em
+    }
+
+    .topbar-center {
+      display: flex;
+      align-items: center;
+      gap: 8px
+    }
+
+    .topbar-right {
+      display: flex;
+      align-items: center;
+      gap: 12px
+    }
+
+    .pill {
+      font-size: 10px;
+      font-weight: 500;
+      padding: 2px 9px;
+      border-radius: 20px;
+      font-family: var(--mono)
+    }
+
+    .pill.live {
+      background: #0a2e0a;
+      color: #5bc45b;
+      border: 1px solid #1e5c1e
+    }
+
+    .pill.incident {
+      background: #2e1010;
+      color: #f07070;
+      border: 1px solid #5c2020;
+      animation: incidentPillPulse 2s ease-in-out infinite;
+    }
+
+    @keyframes incidentPillPulse {
+      0%,100% { box-shadow: 0 0 6px rgba(226,75,74,0.3); }
+      50%     { box-shadow: 0 0 14px rgba(226,75,74,0.65), 0 0 24px rgba(226,75,74,0.2); }
+    }
+
+    .pill.warn {
+      background: #2e2010;
+      color: #f0b870;
+      border: 1px solid #5c4020
+    }
+
+    .clock {
+      font-size: 11px;
+      font-family: var(--mono);
+      color: var(--text2)
+    }
+
+    /* ── LAYOUT ── */
+    .layout {
+      display: grid;
+      grid-template-columns: 1fr 310px;
+      grid-template-rows: 1fr 1fr;
+      height: calc(100vh - 48px);
+      gap: 1px;
+      background: var(--border);
+    }
+
+    .map-area {
+      grid-row: 1/3;
+      background: var(--bg2);
+      position: relative;
+      overflow: hidden
+    }
+
+    .right-top {
+      background: var(--bg2);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column
+    }
+
+    .right-bottom {
+      background: var(--bg2);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column
+    }
+
+    /* ── MAP ── */
+    .map-inner {
+      position: absolute;
+      inset: 0
+    }
+
+    .map-svg {
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+    }
+
+    #map-svg {
+      overflow: visible;
+    }
+
+    /* grid lines */
+    .map-grid-line {
+      stroke: var(--border);
+      stroke-width: 0.5;
+      opacity: 0.6
+    }
+
+    /* Cinematic flash overlay */
+    .flash-overlay {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 50;
+      background: rgba(226, 75, 74, 0.15);
+      opacity: 0;
+      transition: opacity 0.1s;
+    }
+
+    .flash-overlay.active {
+      opacity: 1
+    }
+
+    /* Demo trigger */
+    .demo-trigger {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 60;
+      text-align: center;
+    }
+
+    .demo-btn {
+      background: var(--red);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 14px 32px;
+      font-size: 14px;
+      font-weight: 600;
+      font-family: var(--sans);
+      cursor: pointer;
+      letter-spacing: 0.02em;
+      box-shadow: 0 0 40px rgba(226, 75, 74, 0.4);
+      transition: transform 0.15s, box-shadow 0.15s;
+    }
+
+    .demo-btn:hover {
+      transform: scale(1.04);
+      box-shadow: 0 0 60px rgba(226, 75, 74, 0.6)
+    }
+
+    .demo-sub {
+      font-size: 11px;
+      color: var(--text2);
+      margin-top: 8px;
+      font-family: var(--mono)
+    }
+
+    /* ── DISASTER SELECTOR ── */
+    .disaster-selector {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+
+    .disaster-selector-label {
+      font-size: 10px;
+      font-family: var(--mono);
+      color: var(--text3);
+      text-transform: uppercase;
+      letter-spacing: 0.08em
+    }
+
+    .disaster-btn-group {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      justify-content: center
+    }
+
+    .dis-btn {
+      background: var(--bg3);
+      border: 1px solid var(--border2);
+      border-radius: 6px;
+      color: var(--text2);
+      font-size: 10px;
+      font-family: var(--mono);
+      font-weight: 500;
+      padding: 6px 12px;
+      cursor: pointer;
+      transition: all 0.18s;
+      letter-spacing: 0.03em;
+      white-space: nowrap;
+    }
+
+    .dis-btn:hover {
+      border-color: var(--blue);
+      color: var(--text)
+    }
+
+    .dis-btn.selected {
+      background: #0a1e2e;
+      border-color: var(--blue);
+      color: #90c4f4;
+      box-shadow: 0 0 10px rgba(55, 138, 221, 0.25)
+    }
+
+    /* Disaster banner */
+    .disaster-banner {
+      position: absolute;
+      top: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #1a0808;
+      border: 1px solid var(--red);
+      border-radius: 8px;
+      padding: 10px 20px;
+      z-index: 55;
+      display: none;
+      animation: bannerSlide 0.4s ease;
+    }
+
+    @keyframes bannerSlide {
+      from {
+        transform: translateX(-50%) translateY(-20px);
+        opacity: 0
+      }
+
+      to {
+        transform: translateX(-50%) translateY(0);
+        opacity: 1
+      }
+    }
+
+    .disaster-banner.show {
+      display: block
+    }
+
+    .banner-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--red);
+      font-family: var(--mono);
+      text-align: center
+    }
+
+    .banner-sub {
+      font-size: 10px;
+      color: var(--text2);
+      text-align: center;
+      margin-top: 2px;
+      font-family: var(--mono)
+    }
+
+    /* Map overlays */
+    .map-status-bar {
+      position: absolute;
+      bottom: 12px;
+      left: 12px;
+      right: 12px;
+      display: flex;
+      gap: 8px;
+      z-index: 40;
+    }
+
+    .map-badge {
+      background: rgba(19, 22, 25, 0.88);
+      border: 1px solid var(--border2);
+      border-radius: 6px;
+      padding: 5px 10px;
+      font-size: 11px;
+      font-family: var(--mono);
+      color: var(--text2);
+      backdrop-filter: blur(4px);
+    }
+
+    .map-badge b {
+      color: var(--text)
+    }
+
+    .map-badge.warn-badge {
+      border-color: #5c4020;
+      color: #f0b870
+    }
+
+    /* ── TABS ── */
+    .tabs {
+      display: flex;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0
+    }
+
+    .tab {
+      flex: 1;
+      padding: 8px 4px;
+      font-size: 10px;
+      font-weight: 500;
+      font-family: var(--mono);
+      color: var(--text3);
+      border: none;
+      background: none;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: all 0.2s;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .tab.active {
+      color: var(--text);
+      border-bottom-color: var(--blue)
+    }
+
+    .tab:hover:not(.active) {
+      color: var(--text2)
+    }
+
+    /* ── PANEL CONTENT ── */
+    .panel-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px
+    }
+
+    .panel-body::-webkit-scrollbar {
+      width: 3px
+    }
+
+    .panel-body::-webkit-scrollbar-track {
+      background: transparent
+    }
+
+    .panel-body::-webkit-scrollbar-thumb {
+      background: var(--border2);
+      border-radius: 2px
+    }
+
+    .tab-content {
+      display: none
+    }
+
+    .tab-content.active {
+      display: block
+    }
+
+    /* ── STATS ── */
+    .stats-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+      margin-bottom: 12px
+    }
+
+    .stat-card {
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px;
+      position: relative;
+      overflow: hidden
+    }
+
+    .stat-val {
+      font-size: 20px;
+      font-weight: 600;
+      color: var(--text);
+      font-family: var(--mono);
+      line-height: 1
+    }
+
+    .stat-lbl {
+      font-size: 9px;
+      font-family: var(--mono);
+      color: var(--text3);
+      margin-top: 3px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em
+    }
+
+    .stat-delta {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      font-size: 9px;
+      font-family: var(--mono);
+      color: var(--green)
+    }
+
+    .stat-bar {
+      height: 2px;
+      background: var(--border);
+      border-radius: 1px;
+      margin-top: 6px;
+      overflow: hidden
+    }
+
+    .stat-bar-fill {
+      height: 100%;
+      border-radius: 1px;
+      transition: width 0.8s ease;
+      background: var(--blue)
+    }
+
+    /* ── ALERTS ── */
+    .alert-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px
+    }
+
+    .alert-item {
+      border-radius: 6px;
+      padding: 9px 11px;
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      position: relative;
+      overflow: hidden
+    }
+
+    .alert-item::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 3px;
+      border-radius: 3px 0 0 3px
+    }
+
+    .alert-item.crit::before {
+      background: var(--red)
+    }
+
+    .alert-item.warn::before {
+      background: var(--amber)
+    }
+
+    .alert-item.ok::before {
+      background: var(--green)
+    }
+
+    .alert-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 4px
+    }
+
+    .alert-title {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--text)
+    }
+
+    .alert-time {
+      font-size: 9px;
+      font-family: var(--mono);
+      color: var(--text3)
+    }
+
+    .alert-sub {
+      font-size: 10px;
+      color: var(--text2);
+      margin-top: 3px
+    }
+
+    /* ── AGENT LOG ── */
+    .log-list {
+      display: flex;
+      flex-direction: column;
+      gap: 4px
+    }
+
+    .log-entry {
+      display: flex;
+      gap: 8px;
+      padding: 7px 9px;
+      background: var(--bg3);
+      border-radius: 5px;
+      border: 1px solid var(--border);
+      animation: logIn 0.3s ease;
+    }
+
+    @keyframes logIn {
+      from {
+        opacity: 0;
+        transform: translateY(-4px)
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0)
+      }
+    }
+
+    .log-time {
+      font-size: 9px;
+      font-family: var(--mono);
+      color: var(--text3);
+      white-space: nowrap;
+      padding-top: 1px;
+      flex-shrink: 0
+    }
+
+    .log-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      margin-top: 4px
+    }
+
+    .log-dot.sentinel {
+      background: var(--sentinel)
+    }
+
+    .log-dot.calc {
+      background: var(--calc)
+    }
+
+    .log-dot.resource {
+      background: var(--resource)
+    }
+
+    .log-dot.comms {
+      background: var(--comms)
+    }
+
+    .log-dot.triage {
+      background: var(--triage)
+    }
+
+    .log-right {
+      flex: 1;
+      min-width: 0
+    }
+
+    .log-agent {
+      font-size: 9px;
+      font-family: var(--mono);
+      color: var(--text3);
+      text-transform: uppercase;
+      letter-spacing: 0.04em
+    }
+
+    .log-msg {
+      font-size: 11px;
+      color: var(--text2);
+      margin-top: 1px;
+      line-height: 1.4
+    }
+
+    .log-msg.headline {
+      color: var(--text);
+      font-weight: 500
+    }
+
+    /* ── CONFIDENCE / UNCERTAINTY ── */
+    .confidence-block {
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px;
+      margin-bottom: 8px;
+    }
+
+    .conf-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 6px
+    }
+
+    .conf-title {
+      font-size: 9px;
+      font-family: var(--mono);
+      color: var(--text3);
+      text-transform: uppercase;
+      letter-spacing: 0.06em
+    }
+
+    .conf-val {
+      font-size: 18px;
+      font-weight: 600;
+      font-family: var(--mono);
+      color: var(--amber)
+    }
+
+    .conf-bar-track {
+      height: 4px;
+      background: var(--border);
+      border-radius: 2px;
+      overflow: hidden
+    }
+
+    .conf-bar-fill {
+      height: 100%;
+      border-radius: 2px;
+      background: linear-gradient(90deg, var(--red), var(--amber), var(--green));
+      transition: width 1s ease
+    }
+
+    .conf-warn {
+      font-size: 9px;
+      font-family: var(--mono);
+      color: var(--amber);
+      margin-top: 6px;
+      display: flex;
+      align-items: center;
+      gap: 4px
+    }
+
+    .conf-reeval {
+      font-size: 9px;
+      font-family: var(--mono);
+      color: var(--text3);
+      margin-top: 4px
+    }
+
+    /* ── TIMELINE ── */
+    .timeline {
+      display: flex;
+      flex-direction: column;
+      gap: 0
+    }
+
+    .tl-item {
+      display: flex;
+      gap: 8px;
+      position: relative;
+      padding-bottom: 8px
+    }
+
+    .tl-item:not(:last-child) .tl-line {
+      position: absolute;
+      left: 11px;
+      top: 18px;
+      bottom: 0;
+      width: 1px;
+      background: var(--border)
+    }
+
+    .tl-dot-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      flex-shrink: 0;
+      width: 24px
+    }
+
+    .tl-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--border2);
+      border: 2px solid var(--border2);
+      flex-shrink: 0;
+      margin-top: 5px;
+      transition: all 0.3s
+    }
+
+    .tl-dot.done {
+      background: var(--blue);
+      border-color: var(--blue);
+      box-shadow: 0 0 6px rgba(55, 138, 221, 0.5)
+    }
+
+    .tl-dot.active {
+      background: var(--amber);
+      border-color: var(--amber);
+      box-shadow: 0 0 8px rgba(239, 159, 39, 0.6);
+      animation: tlPulse 1s ease-in-out infinite
+    }
+
+    @keyframes tlPulse {
+
+      0%,
+      100% {
+        box-shadow: 0 0 6px rgba(239, 159, 39, 0.4)
+      }
+
+      50% {
+        box-shadow: 0 0 14px rgba(239, 159, 39, 0.8)
+      }
+    }
+
+    .tl-content {
+      flex: 1;
+      min-width: 0
+    }
+
+    .tl-time {
+      font-size: 9px;
+      font-family: var(--mono);
+      color: var(--text3)
+    }
+
+    .tl-label {
+      font-size: 11px;
+      color: var(--text2);
+      margin-top: 1px
+    }
+
+    .tl-badge {
+      display: inline-block;
+      font-size: 9px;
+      font-family: var(--mono);
+      padding: 1px 6px;
+      border-radius: 3px;
+      margin-top: 3px
+    }
+
+    .tl-badge.green {
+      background: #0a2e0a;
+      color: #5bc45b;
+      border: 1px solid #1e5c1e
+    }
+
+    .tl-badge.amber {
+      background: #2e2010;
+      color: #f0b870;
+      border: 1px solid #5c4020
+    }
+
+    .tl-badge.red {
+      background: #2e1010;
+      color: #f07070;
+      border: 1px solid #5c2020
+    }
+
+    .tl-badge.blue {
+      background: #0a1e2e;
+      color: #70b0f0;
+      border: 1px solid #1e3c5c
+    }
+
+    /* ── SMS LOG ── */
+    .sms-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px
+    }
+
+    .sms-item {
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 9px 10px;
+      animation: logIn 0.3s ease;
+    }
+
+    /* ── Active agent pulse glow ── */
+    @keyframes agentPulse {
+      0%,100% { filter: drop-shadow(0 0 5px rgba(55,138,221,0.7)) drop-shadow(0 0 2px rgba(55,138,221,0.9)); }
+      50%      { filter: drop-shadow(0 0 12px rgba(55,138,221,1))  drop-shadow(0 0 20px rgba(55,138,221,0.5)); }
+    }
+    .res-active-moving circle.dot {
+      animation: agentPulse 1.1s ease-in-out infinite !important;
+    }
+
+    /* ── Flowing route dash animation ── */
+    @keyframes routeFlow {
+      from { stroke-dashoffset: 24; }
+      to   { stroke-dashoffset: 0; }
+    }
+    .route-live {
+      stroke-dasharray: 8 6 !important;
+      animation: routeFlow 0.7s linear infinite !important;
+    }
+
+    .sms-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 3px
+    }
+
+    .sms-to {
+      font-size: 10px;
+      font-family: var(--mono);
+      color: var(--text3)
+    }
+
+    .sms-time {
+      font-size: 9px;
+      font-family: var(--mono);
+      color: var(--text3)
+    }
+
+    .sms-body {
+      font-size: 11px;
+      color: var(--text2);
+      line-height: 1.4
+    }
+
+    .sms-status-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 5px
+    }
+
+    .sms-stage {
+      font-size: 9px;
+      font-family: var(--mono);
+      padding: 1px 6px;
+      border-radius: 3px;
+      transition: all 0.3s
+    }
+
+    .sms-stage.sending {
+      background: #1e1e08;
+      color: #d0d050;
+      border: 1px solid #4c4c18
+    }
+
+    .sms-stage.sent {
+      background: #0a1e2e;
+      color: #70b0f0;
+      border: 1px solid #1e3c5c
+    }
+
+    .sms-stage.delivered {
+      background: #0a2e0a;
+      color: #5bc45b;
+      border: 1px solid #1e5c1e
+    }
+
+    .sms-stage.ack {
+      background: #1a0a2e;
+      color: #b070f0;
+      border: 1px solid #3c1e5c
+    }
+
+    /* ── TRIAGE CHAT ── */
+    .chat-wrap {
+      display: flex;
+      flex-direction: column;
+      height: 100%
+    }
+
+    .chat-context-bar {
+      background: #1a0a0a;
+      border-bottom: 1px solid #3c1e1e;
+      padding: 6px 12px;
+      font-size: 10px;
+      font-family: var(--mono);
+      color: var(--red);
+      flex-shrink: 0;
+      display: none;
+    }
+
+    .chat-context-bar.show {
+      display: block
+    }
+
+    .chat-messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px
+    }
+
+    .chat-messages::-webkit-scrollbar {
+      width: 3px
+    }
+
+    .chat-messages::-webkit-scrollbar-thumb {
+      background: var(--border2)
+    }
+
+    .bubble {
+      border-radius: 8px;
+      padding: 8px 11px;
+      font-size: 11px;
+      line-height: 1.5;
+      max-width: 88%;
+      animation: logIn 0.25s ease
+    }
+
+    .bubble.user {
+      background: #0a1e2e;
+      color: #90c4f4;
+      align-self: flex-end;
+      border-radius: 8px 8px 2px 8px;
+      border: 1px solid #1e3c5c
+    }
+
+    .bubble.agent {
+      background: var(--bg3);
+      color: var(--text);
+      align-self: flex-start;
+      border-radius: 8px 8px 8px 2px;
+      border: 1px solid var(--border)
+    }
+
+    .bubble-tag {
+      display: inline-block;
+      font-size: 9px;
+      font-family: var(--mono);
+      padding: 2px 7px;
+      border-radius: 3px;
+      margin-top: 4px
+    }
+
+    .bubble-tag.urgent {
+      background: #2e1010;
+      color: #f07070;
+      border: 1px solid #5c2020
+    }
+
+    .bubble-tag.ok {
+      background: #0a2e0a;
+      color: #5bc45b;
+      border: 1px solid #1e5c1e
+    }
+
+    .bubble-tag.info {
+      background: #0a1e2e;
+      color: #70b0f0;
+      border: 1px solid #1e3c5c
+    }
+
+    .chat-typing {
+      display: none;
+      padding: 8px 11px;
+      background: var(--bg3);
+      border-radius: 8px 8px 8px 2px;
+      border: 1px solid var(--border);
+      align-self: flex-start;
+      font-size: 11px;
+      color: var(--text2)
+    }
+
+    .chat-typing.show {
+      display: block
+    }
+
+    .typing-dots span {
+      display: inline-block;
+      width: 5px;
+      height: 5px;
+      background: var(--text3);
+      border-radius: 50%;
+      animation: td 1s ease-in-out infinite
+    }
+
+    .typing-dots span:nth-child(2) {
+      animation-delay: 0.2s
+    }
+
+    .typing-dots span:nth-child(3) {
+      animation-delay: 0.4s
+    }
+
+    @keyframes td {
+
+      0%,
+      100% {
+        transform: translateY(0)
+      }
+
+      50% {
+        transform: translateY(-3px)
+      }
+    }
+
+    .chat-footer {
+      border-top: 1px solid var(--border);
+      padding: 8px;
+      display: flex;
+      gap: 6px;
+      flex-shrink: 0
+    }
+
+    .chat-input {
+      flex: 1;
+      background: var(--bg3);
+      border: 1px solid var(--border2);
+      border-radius: 6px;
+      padding: 7px 10px;
+      font-size: 11px;
+      font-family: var(--sans);
+      color: var(--text);
+      outline: none;
+    }
+
+    .chat-input:focus {
+      border-color: var(--blue)
+    }
+
+    .chat-input::placeholder {
+      color: var(--text3)
+    }
+
+    .chat-send {
+      background: var(--red);
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 7px 12px;
+      font-size: 11px;
+      font-weight: 500;
+      cursor: pointer;
+      font-family: var(--sans);
+      transition: opacity 0.15s;
+    }
+
+    .chat-send:hover {
+      opacity: 0.85
+    }
+
+    .chat-conf {
+      font-size: 9px;
+      font-family: var(--mono);
+      color: var(--text3);
+      padding: 4px 0 0 12px;
+      flex-shrink: 0
+    }
+
+    /* ── FAILURE CARD ── */
+    .failure-card {
+      background: #140a0a;
+      border: 1px solid #5c2020;
+      border-radius: 6px;
+      padding: 10px;
+      margin-bottom: 8px;
+      display: none;
+      animation: logIn 0.3s ease;
+    }
+
+    .failure-card.show {
+      display: block
+    }
+
+    .failure-title {
+      font-size: 10px;
+      font-family: var(--mono);
+      color: var(--red);
+      font-weight: 500
+    }
+
+    .failure-body {
+      font-size: 10px;
+      color: var(--text2);
+      margin-top: 4px;
+      line-height: 1.4
+    }
+
+    .failure-action {
+      font-size: 9px;
+      font-family: var(--mono);
+      color: var(--amber);
+      margin-top: 6px
+    }
+
+    /* ── SVG MAP ELEMENTS ── */
+    .incident-zone {
+      fill: none;
+      stroke: var(--red);
+      stroke-width: 1.5;
+      opacity: 0.6;
+      animation: zoneBreath 2s ease-in-out infinite
+    }
+
+    @keyframes zoneBreath {
+
+      0%,
+      100% {
+        opacity: 0.4
+      }
+
+      50% {
+        opacity: 0.85
+      }
+    }
+
+    .route-path {
+      fill: none;
+      stroke: var(--blue);
+      stroke-width: 1.5;
+      stroke-dasharray: 6 4;
+      opacity: 0.7;
+      stroke-dashoffset: 0;
+      animation: routeFlow 2s linear infinite
+    }
+
+    @keyframes routeFlow {
+      to {
+        stroke-dashoffset: -20
+      }
+    }
+
+    /* Route draw-in animation */
+    .route-draw {
+      stroke-dashoffset: 800;
+      animation: routeDraw 1.8s ease forwards, routeFlow 2s linear 1.8s infinite
+    }
+
+    @keyframes routeDraw {
+      from {
+        stroke-dashoffset: 800
+      }
+
+      to {
+        stroke-dashoffset: 0
+      }
+    }
+
+    /* ── ISSUE 5: Marker upgrades ── */
+    .vol-dot {
+      fill: var(--green);
+      stroke: #131619;
+      stroke-width: 2;
+      filter: drop-shadow(0 0 6px rgba(0,255,150,0.6))
+    }
+
+    .vol-dot.moving {
+      animation: volBob 1.5s ease-in-out infinite
+    }
+
+    @keyframes volBob {
+
+      0%,
+      100% {
+        transform: translateY(0px)
+      }
+
+      50% {
+        transform: translateY(-2px)
+      }
+    }
+
+    /* Resource dots – blue with stronger glow */
+    .res-dot {
+      fill: var(--blue);
+      stroke: #131619;
+      stroke-width: 2;
+      filter: drop-shadow(0 0 7px rgba(55,138,221,0.75))
+    }
+
+    /* ── COUNTERS ── */
+    .counting {
+      animation: countFlash 0.3s ease
+    }
+
+    @keyframes countFlash {
+      0% {
+        color: var(--amber)
+      }
+
+      100% {
+        color: var(--text)
+      }
+    }
+
+    /* ── CINEMATIC MAP ADDITIONS ── */
+    /* Disaster core — fast inner pulse */
+    @keyframes coreInnerPulse {
+      0% {
+        r: 12;
+        opacity: 0.95;
+        filter: drop-shadow(0 0 8px #E24B4A)
+      }
+
+      50% {
+        r: 18;
+        opacity: 0.5;
+        filter: drop-shadow(0 0 20px #E24B4A)
+      }
+
+      100% {
+        r: 12;
+        opacity: 0.95;
+        filter: drop-shadow(0 0 8px #E24B4A)
+      }
+    }
+
+    /* Disaster core — slow outer ring pulse */
+    @keyframes coreOuterPulse {
+      0% {
+        r: 30;
+        opacity: 0.7;
+        stroke-width: 2.5
+      }
+
+      50% {
+        r: 42;
+        opacity: 0.2;
+        stroke-width: 1
+      }
+
+      100% {
+        r: 30;
+        opacity: 0.7;
+        stroke-width: 2.5
+      }
+    }
+
+    /* Expanding wave rings — each staggered */
+    @keyframes waveExpand {
+      0% {
+        r: 22;
+        opacity: 0.9;
+        stroke-width: 2.5
+      }
+
+      100% {
+        r: 140;
+        opacity: 0;
+        stroke-width: 0.2
+      }
+    }
+
+    .wave-ring {
+      fill: none;
+      stroke: #E24B4A;
+      animation: waveExpand 3.2s ease-out infinite;
+      transform-origin: 300px 200px;
+      filter: drop-shadow(0 0 6px rgba(255,80,80,0.5));
+    }
+
+    .wave-ring.w2 {
+      animation-delay: 0.8s;
+      stroke: #ff6b6b;
+    }
+
+    .wave-ring.w3 {
+      animation-delay: 1.6s;
+      stroke: #E24B4A;
+    }
+
+    /* 4th ring for deeper impact */
+    .wave-ring.w4 {
+      animation-delay: 2.4s;
+      stroke: #ff9999;
+      opacity: 0.5;
+    }
+
+    /* Core pin */
+    .core-inner {
+      fill: #E24B4A;
+      animation: coreInnerPulse 0.9s ease-in-out infinite;
+      filter: drop-shadow(0 0 8px #E24B4A);
+    }
+
+    .core-outer {
+      fill: none;
+      stroke: #E24B4A;
+      animation: coreOuterPulse 2s ease-in-out infinite;
+    }
+
+    /* Glow fill behind core */
+    @keyframes coreGlowFill {
+
+      0%,
+      100% {
+        opacity: 0.12
+      }
+
+      50% {
+        opacity: 0.28
+      }
+    }
+
+    .core-glow {
+      fill: #E24B4A;
+      animation: coreGlowFill 1.8s ease-in-out infinite;
+    }
+
+    /* Volunteer group — <g> holds position via SVG transform; NO CSS transform here */
+    .vol-unit {
+      overflow: visible;
+    }
+
+    /* Resource unit groups — <g> holds position via SVG transform; NO CSS transform here */
+    .res-unit {
+      overflow: visible;
+    }
+
+    /* Float animation ONLY on .dot circles — never on <g> */
+    .vol-unit .dot {
+      animation: floatY 2.2s ease-in-out infinite, markerPulse 3s ease-in-out 1s infinite;
+    }
+
+    .res-unit .dot {
+      animation: floatY 3s ease-in-out infinite, markerPulse 4s ease-in-out 0.5s infinite;
+    }
+
+    @keyframes markerPulse {
+      0%,100% { opacity: 1;   }
+      50%     { opacity: 0.7; }
+    }
+
+    @keyframes floatY {
+      0%   { transform: translateY(0px);  }
+      50%  { transform: translateY(-3px); }
+      100% { transform: translateY(0px);  }
+    }
+
+    /* Ensure SVG text labels are always visible */
+    #map-svg text {
+      fill: #e6edf3;
+      font-size: 10px;
+      pointer-events: none;
+    }
+
+    /* ── ISSUE 1: Label clutter fix ── */
+    .vol-unit text, .res-unit text {
+      pointer-events: none;
+      transition: opacity 0.4s;
+    }
+    .vol-unit .lbl-team {
+      font-size: 7px !important;
+      font-weight: 500 !important;
+      opacity: 0.9;
+    }
+    .vol-unit .lbl-name, .res-unit .lbl-name {
+      font-size: 6.5px !important;
+      font-weight: 400 !important;
+      opacity: 0.65;
+    }
+    .res-unit .lbl-team {
+      font-size: 7px !important;
+      font-weight: 500 !important;
+      opacity: 0.9;
+    }
+    /* Distant units: fade labels */
+    .vol-unit.distant text, .res-unit.distant text {
+      opacity: 0.45;
+    }
+    /* Near units: crisp labels */
+    .vol-unit.near text, .res-unit.near text {
+      opacity: 1;
+    }
+
+    #map-svg {
+      overflow: visible;
+    }
+
+    /* Route animated draw-in then continuous flow */
+    .route-cinematic {
+      fill: none;
+      stroke: var(--blue);
+      stroke-width: 1.5;
+      stroke-dasharray: 6 4;
+      opacity: 0;
+    }
+
+    @keyframes routeCinematicDraw {
+      from {
+        stroke-dashoffset: var(--route-len, 600);
+        opacity: 0
+      }
+
+      to {
+        stroke-dashoffset: 0;
+        opacity: 0.75
+      }
+    }
+
+    @keyframes routeCinematicFlow {
+      to {
+        stroke-dashoffset: -20
+      }
+    }
+
+    .route-live {
+      fill: none;
+      stroke: var(--blue);
+      stroke-width: 1.5;
+      stroke-dasharray: 6 4;
+      opacity: 0.75;
+      animation: routeCinematicFlow 1.8s linear infinite;
+    }
+
+    /* ── THINKING OVERLAY ── */
+    .thinking-overlay {
+      position: absolute;
+      inset: 0;
+      z-index: 70;
+      background: rgba(13, 15, 18, 0.85);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 14px;
+      backdrop-filter: blur(3px);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s;
+    }
+
+    .thinking-overlay.show {
+      opacity: 1;
+      pointer-events: all
+    }
+
+    .thinking-text {
+      font-size: 15px;
+      font-weight: 500;
+      font-family: var(--mono);
+      color: var(--text);
+      letter-spacing: 0.04em
+    }
+
+    .thinking-sub {
+      font-size: 11px;
+      font-family: var(--mono);
+      color: var(--text2)
+    }
+
+    .thinking-dots-wrap {
+      display: flex;
+      gap: 8px
+    }
+
+    .thinking-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--red);
+      animation: thinkPulse 1.2s ease-in-out infinite
+    }
+
+    .thinking-dot:nth-child(2) {
+      animation-delay: 0.2s;
+      background: var(--amber)
+    }
+
+    .thinking-dot:nth-child(3) {
+      animation-delay: 0.4s;
+      background: var(--blue)
+    }
+
+    @keyframes thinkPulse {
+
+      0%,
+      100% {
+        transform: scale(0.7);
+        opacity: 0.4
+      }
+
+      50% {
+        transform: scale(1.2);
+        opacity: 1
+      }
+    }
+
+    /* scanning bar */
+    .thinking-scan {
+      width: 220px;
+      height: 2px;
+      background: var(--border2);
+      border-radius: 1px;
+      overflow: hidden;
+      margin-top: 4px
+    }
+
+    .thinking-scan-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, var(--red), var(--amber));
+      border-radius: 1px;
+      transition: width 0.15s linear
+    }
+
+    /* ── AGENT STEP INDICATOR (top of decision log) ── */
+    .agent-step-bar {
+      display: flex;
+      gap: 4px;
+      padding: 8px 0 4px;
+      flex-wrap: wrap;
+    }
+
+    .agent-step {
+      font-size: 9px;
+      font-family: var(--mono);
+      padding: 3px 8px;
+      border-radius: 20px;
+      border: 1px solid var(--border);
+      color: var(--text3);
+      transition: all 0.4s;
+    }
+
+    .agent-step.active {
+      color: var(--amber);
+      border-color: var(--amber);
+      background: #2e2010;
+      box-shadow: 0 0 8px rgba(239, 159, 39, 0.3);
+      animation: stepPulse 0.8s ease-in-out infinite
+    }
+
+    .agent-step.done {
+      color: var(--green);
+      border-color: #1e5c1e;
+      background: #0a2e0a
+    }
+
+    @keyframes stepPulse {
+
+      0%,
+      100% {
+        opacity: 0.8
+      }
+
+      50% {
+        opacity: 1
+      }
+    }
+
+    /* ── DISTRICT LABEL PILL — cinematic ── */
+    @keyframes districtFadeIn {
+      from { opacity: 0; transform: translateY(-6px); }
+      to   { opacity: 1; transform: translateY(0);    }
+    }
+
+    @keyframes districtGlow {
+      0%,100% { filter: drop-shadow(0 0 6px rgba(226,75,74,0.3));  }
+      50%      { filter: drop-shadow(0 0 16px rgba(226,75,74,0.65)); }
+    }
+
+    #incident-pin {
+      animation: districtFadeIn 0.6s ease forwards, districtGlow 2.5s ease-in-out 0.6s infinite;
+    }
+
+    /* ── LEAFLET MAP ── */
+    #map {
+      position: absolute;
+      inset: 0;
+      z-index: 0
+    }
+
+    .map-svg {
+      position: relative;
+      z-index: 1
+    }
+
+    /* ── ISSUE 2: Cinematic map overlays ── */
+    /* Radial vignette darkens edges, red core tint */
+    .map-inner::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 55% 55% at 50% 40%, rgba(226,75,74,0.06) 0%, transparent 60%),
+        radial-gradient(ellipse 100% 100% at 50% 50%, transparent 40%, rgba(0,0,0,0.68) 100%);
+      pointer-events: none;
+      z-index: 3;
+    }
+    /* Command-center grid overlay */
+    .map-inner::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px);
+      background-size: 40px 40px;
+      pointer-events: none;
+      z-index: 2;
+    }
+    /* Alert banner: flicker + urgency glow */
+    @keyframes bannerFlicker {
+      0%,100% { opacity: 1; }
+      92%      { opacity: 1; }
+      93%      { opacity: 0.7; }
+      94%      { opacity: 1; }
+      97%      { opacity: 0.85; }
+      98%      { opacity: 1; }
+    }
+    @keyframes bannerUrgencyPulse {
+      0%,100% { box-shadow: 0 0 12px rgba(226,75,74,0.35), 0 0 30px rgba(226,75,74,0.1); }
+      50%     { box-shadow: 0 0 22px rgba(226,75,74,0.65), 0 0 50px rgba(226,75,74,0.2); }
+    }
+    .disaster-banner.show {
+      animation: bannerFlicker 4s ease-in-out infinite, bannerUrgencyPulse 2s ease-in-out infinite;
+    }
+    .banner-title {
+      text-shadow: 0 0 10px rgba(226,75,74,0.7);
+    }
+
+    /* ═══════════════════════════════════════════
+       PHASE 3 — REAL-TIME INTELLIGENCE ADDITIONS
+    ═══════════════════════════════════════════ */
+
+    /* ── Decision Stream: thinking steps ── */
+    .log-entry.thinking .log-msg {
+      color: var(--amber);
+      font-style: italic;
+    }
+    .log-entry.thinking .log-dot {
+      animation: thinkPulse 0.8s ease-in-out infinite;
+    }
+    @keyframes thinkPulse {
+      0%,100% { opacity: 1; transform: scale(1); }
+      50%      { opacity: 0.3; transform: scale(0.6); }
+    }
+    .log-step-tag {
+      display: inline-block;
+      font-size: 8px;
+      font-family: var(--mono);
+      padding: 1px 5px;
+      border-radius: 3px;
+      margin-right: 5px;
+      vertical-align: middle;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    .log-step-tag.detect  { background:#1a1430; color:#9b8fff; border:1px solid #3d3070; }
+    .log-step-tag.verify  { background:#0e2030; color:#60b0f0; border:1px solid #1e4870; }
+    .log-step-tag.score   { background:#0e2818; color:#3dd68c; border:1px solid #1e5c38; }
+    .log-step-tag.zone    { background:#2a1808; color:#f0a050; border:1px solid #5c3010; }
+    .log-step-tag.match   { background:#0a1e3c; color:#60aaff; border:1px solid #1a3c7c; }
+    .log-step-tag.deploy  { background:#0a2e0a; color:#5bc45b; border:1px solid #1e5c1e; }
+    .log-step-tag.alert   { background:#2e1010; color:#f07070; border:1px solid #5c2020; }
+
+    /* ── Dynamic Confidence: animated fill ── */
+    .conf-bar-fill {
+      transition: width 1.2s cubic-bezier(0.4,0,0.2,1) !important;
+    }
+    .conf-val.climbing {
+      animation: confClimb 0.4s ease;
+    }
+    @keyframes confClimb {
+      0%   { transform: scale(1.0); color: var(--amber); }
+      50%  { transform: scale(1.18); color: #5bc45b; }
+      100% { transform: scale(1.0); }
+    }
+
+    /* ── Team Status Progression badges ── */
+    .team-status-strip {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      margin-top: 6px;
+    }
+    .team-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 5px 9px;
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      font-size: 10px;
+      font-family: var(--mono);
+      color: var(--text2);
+      animation: logIn 0.35s ease;
+    }
+    .team-name { font-weight: 600; color: var(--text); }
+    .team-badge {
+      font-size: 8px;
+      padding: 2px 7px;
+      border-radius: 10px;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      transition: background 0.4s, color 0.4s, border-color 0.4s;
+    }
+    .team-badge.dispatching { background:#1a1000; color:#f0b840; border:1px solid #4a3000; }
+    .team-badge.enroute     { background:#0a1e3c; color:#70b0ff; border:1px solid #1a3c7c; }
+    .team-badge.nearzone    { background:#1a2800; color:#90d070; border:1px solid #2e5010; }
+    .team-badge.onsite      { background:#0a2e0a; color:#5bc45b; border:1px solid #1e5c1e;
+                              box-shadow: 0 0 6px rgba(91,196,91,0.35); }
+
+    /* ── Route travel direction pulse (dashoffset animation) ── */
+    .route-live {
+      stroke-dasharray: 6 5;
+      animation: routeFlow 1.2s linear infinite;
+    }
+    @keyframes routeFlow {
+      from { stroke-dashoffset: 0; }
+      to   { stroke-dashoffset: -22; }
+    }
+
+    /* ══════════════════════════════════════════
+       HOSPITAL ALERT PANEL
+    ══════════════════════════════════════════ */
+    .hospital-panel {
+      display: none;
+      flex-direction: column;
+      gap: 0;
+    }
+    .hospital-panel.show {
+      display: flex;
+    }
+    .hospital-panel-header {
+      font-size: 9px;
+      font-family: var(--mono);
+      color: var(--text3);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      padding: 0 0 6px 0;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .hospital-panel-header .hosp-count-badge {
+      background: #0a1e2e;
+      color: #70b0f0;
+      border: 1px solid #1e3c5c;
+      font-size: 8px;
+      padding: 1px 7px;
+      border-radius: 10px;
+    }
+    .hospital-list {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+    .hospital-item {
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-left: 3px solid #1D9E75;
+      border-radius: 6px;
+      padding: 8px 10px;
+      animation: logIn 0.35s ease;
+      position: relative;
+    }
+    .hospital-item-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 4px;
+    }
+    .hospital-name {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--text);
+      line-height: 1.3;
+    }
+    .hospital-alert-badge {
+      font-size: 8px;
+      font-family: var(--mono);
+      padding: 2px 7px;
+      border-radius: 10px;
+      background: #0a2e0a;
+      color: #5bc45b;
+      border: 1px solid #1e5c1e;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .hospital-meta {
+      display: flex;
+      gap: 10px;
+      margin-top: 3px;
+      font-size: 9px;
+      font-family: var(--mono);
+      color: var(--text3);
+    }
+    .hospital-dist {
+      color: #90c4f4;
+    }
+    .hospital-api-error {
+      background: #140a0a;
+      border: 1px solid #5c2020;
+      border-radius: 6px;
+      padding: 8px 10px;
+      font-size: 10px;
+      font-family: var(--mono);
+      color: #f07070;
+      display: none;
+    }
+    .hospital-api-error.show { display: block; }
+
+    /* Hospital line on SVG map (disaster → hospital) */
+    .hosp-line {
+      fill: none;
+      stroke: #1D9E75;
+      stroke-width: 1.5;
+      stroke-dasharray: 5 4;
+      opacity: 0.65;
+      animation: hospLineFlow 2s linear infinite;
+    }
+    @keyframes hospLineFlow {
+      from { stroke-dashoffset: 0; }
+      to   { stroke-dashoffset: -18; }
+    }
+  </style>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+</head>
+
+<body>
+
+  <!-- TOPBAR -->
+  <div class="topbar">
+    <div class="logo">
+      <div class="logo-icon">
+        <svg viewBox="0 0 14 14" fill="none">
+          <path d="M7 1.5L12.5 4.5v5L7 12.5 1.5 9.5v-5L7 1.5z" stroke="#fff" stroke-width="1.5"
+            stroke-linejoin="round" />
+          <circle cx="7" cy="7" r="2" fill="#fff" />
+        </svg>
+      </div>
+      <span class="logo-text">ReliefAI</span>
+      <span class="pill live" id="live-pill">● LIVE</span>
+    </div>
+    <div class="topbar-center">
+      <span class="pill incident" id="incident-count-pill">2 ACTIVE INCIDENTS</span>
+      <span class="pill warn" id="pipeline-pill" style="display:none">PIPELINE RUNNING</span>
+    </div>
+    <div class="topbar-right">
+      <span class="clock" id="clock">--:-- IST</span>
+    </div>
+  </div>
+
+  <!-- LAYOUT -->
+  <div class="layout">
+
+    <!-- MAP AREA -->
+    <div class="map-area">
+      <div class="map-inner">
+        <div id="map"></div>
+        <svg class="map-svg" id="map-svg" viewBox="0 0 600 500" preserveAspectRatio="xMidYMid slice">
+          <!-- Grid -->
+          <defs>
+            <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+              <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#2A2D35" stroke-width="0.5" />
+            </pattern>
+            <!-- Route gradient: agent-color → red zone -->
+            <linearGradient id="routeGrad0" x1="0%" y1="0%" x2="100%" y2="0%" gradientUnits="objectBoundingBox">
+              <stop offset="0%"   stop-color="#00e676" stop-opacity="0.95"/>
+              <stop offset="70%"  stop-color="#29b6f6" stop-opacity="0.85"/>
+              <stop offset="100%" stop-color="#E24B4A" stop-opacity="0.75"/>
+            </linearGradient>
+            <linearGradient id="routeGrad1" x1="0%" y1="0%" x2="100%" y2="0%" gradientUnits="objectBoundingBox">
+              <stop offset="0%"   stop-color="#ffca28" stop-opacity="0.95"/>
+              <stop offset="70%"  stop-color="#ff7043" stop-opacity="0.85"/>
+              <stop offset="100%" stop-color="#E24B4A" stop-opacity="0.75"/>
+            </linearGradient>
+            <!-- Glow filter for routes -->
+            <filter id="routeGlow" x="-20%" y="-100%" width="140%" height="300%">
+              <feGaussianBlur stdDeviation="2.5" result="blur"/>
+              <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+            </filter>
+          </defs>
+          <rect width="600" height="500" fill="url(#grid)" />
+
+          <!-- ═══ CINEMATIC ROUTES (drawn via JS) ═══ -->
+          <g id="routes-group">
+            <!-- Route paths injected by revealRoutesSequential() -->
+          </g>
+
+          <!-- ═══ INCIDENT ZONE — CINEMATIC CORE ═══ -->
+          <g id="incident-core" style="display:none">
+            <!-- Expanding wave rings -->
+            <circle class="wave-ring" cx="300" cy="200" r="22" />
+            <circle class="wave-ring w2" cx="300" cy="200" r="22" />
+            <circle class="wave-ring w3" cx="300" cy="200" r="22" />
+            <circle class="wave-ring w4" cx="300" cy="200" r="22" />
+            <!-- Glow fill — enlarged for stronger red emphasis -->
+            <circle class="core-glow" cx="300" cy="200" r="80" style="fill:rgba(226,75,74,0.10)" />
+            <circle class="core-glow" cx="300" cy="200" r="55" />
+            <!-- Outer slow ring -->
+            <circle class="core-outer" cx="300" cy="200" r="34" stroke-width="2.5" />
+            <!-- Inner fast core — bigger, stronger glow -->
+            <circle class="core-inner" cx="300" cy="200" r="15" style="filter:drop-shadow(0 0 20px rgba(255,60,60,1)) drop-shadow(0 0 40px rgba(226,75,74,0.7))" />
+          </g>
+
+          <!-- Incident label — cinematic pill ABOVE the incident core -->
+          <g id="incident-pin" style="display:none">
+            <!-- Glass pill background -->
+            <rect x="210" y="110" width="180" height="38" rx="19"
+              fill="rgba(226,75,74,0.10)"
+              stroke="rgba(226,75,74,0.45)"
+              stroke-width="1"
+              style="filter:drop-shadow(0 0 10px rgba(226,75,74,0.35))" />
+            <!-- District name -->
+            <text x="300" y="124" fill="#ff8a80" font-size="10" font-weight="700"
+              text-anchor="middle" font-family="IBM Plex Mono, monospace"
+              letter-spacing="2">ALAPPUZHA DISTRICT</text>
+            <!-- Sub-line: event type + severity -->
+            <text x="300" y="139" fill="rgba(230,210,210,0.82)" font-size="8.5"
+              text-anchor="middle" font-family="IBM Plex Mono, monospace"
+              letter-spacing="0.5">Flash Flood · Severity 8.7</text>
+          </g>
+
+          <!-- ═══ VOLUNTEERS (20–30 units, built by JS) ═══ -->
+          <g id="vol-group">
+            <!-- populated dynamically -->
+          </g>
+
+          <!-- ═══ RESOURCE UNITS (10–15 units, built by JS) ═══ -->
+          <g id="res-group" style="display:none">
+            <!-- populated dynamically -->
+          </g>
+
+          <!-- Static labels -->
+          <text x="30" y="20" fill="#4A5260" font-size="9" font-family="IBM Plex Mono, monospace">ALAPPUZHA DISTRICT,
+            KERALA</text>
+          <text x="30" y="35" fill="#333844" font-size="8" font-family="IBM Plex Mono, monospace">9.4981°N
+            76.3388°E</text>
+        </svg>
+
+        <!-- Animated ring pulses via canvas-like overlay divs -->
+        <div class="flash-overlay" id="flash-overlay"></div>
+      </div>
+
+      <!-- Thinking overlay (Phase 0) -->
+      <div class="thinking-overlay" id="thinking-overlay">
+        <div class="thinking-text" id="thinking-text">Analyzing disaster data…</div>
+        <div class="thinking-dots-wrap">
+          <div class="thinking-dot"></div>
+          <div class="thinking-dot"></div>
+          <div class="thinking-dot"></div>
+        </div>
+        <div class="thinking-scan">
+          <div class="thinking-scan-fill" id="thinking-scan-fill"></div>
+        </div>
+        <div class="thinking-sub" id="thinking-sub">Cross-referencing NOAA telemetry…</div>
+      </div>
+
+      <!-- Disaster banner -->
+      <div class="disaster-banner" id="disaster-banner">
+        <div class="banner-title">⚠ NEW DISASTER DETECTED — ALAPPUZHA KERALA</div>
+        <div class="banner-sub" id="banner-sub">Initialising Sentinel AI pipeline…</div>
+      </div>
+
+      <!-- Map status bar -->
+      <div class="map-status-bar">
+        <div class="map-badge"><b id="mb-units">0</b> units en route</div>
+        <div class="map-badge"><b id="mb-triage">0</b> triage active</div>
+        <div class="map-badge" id="mb-conf" style="display:none">Conf: <b id="mb-conf-val">--</b>%</div>
+        <div class="map-badge warn-badge" id="mb-warn" style="display:none">⚠ Re-routing</div>
+      </div>
+
+      <!-- Demo trigger -->
+      <div class="demo-trigger" id="demo-trigger">
+        <div class="disaster-selector">
+          <div class="disaster-selector-label">Select Disaster Scenario</div>
+          <div class="disaster-btn-group">
+            <button class="dis-btn selected" id="dis-0" onclick="selectDisaster(0)">🌊 Kerala Flood</button>
+            <button class="dis-btn" id="dis-1" onclick="selectDisaster(1)">🏔 Himachal Quake</button>
+            <button class="dis-btn" id="dis-2" onclick="selectDisaster(2)">🌀 Odisha Cyclone</button>
+          </div>
+        </div>
+        <button class="demo-btn" onclick="LIVE_EVENT=null;startDemo();" id="trigger-demo-btn">▶ TRIGGER INCIDENT DEMO</button>
+        <!-- DETECTION LAYER: Live detect button — does NOT affect the button above -->
+        <div style="margin-top:10px;display:flex;gap:8px;justify-content:center;align-items:center;">
+          <button
+            class="demo-btn"
+            style="background:#1D9E75;box-shadow:0 0 30px rgba(29,158,117,0.35);font-size:12px;padding:10px 20px;"
+            onclick="fetchAndTrigger()"
+            title="Fetch real earthquake data from USGS and auto-trigger if M>=5.5">
+            LIVE DETECT
+          </button>
+          <button
+            class="demo-btn"
+            id="live-mode-btn"
+            style="background:#222630;border:1px solid #333844;box-shadow:none;font-size:11px;padding:10px 16px;color:#8A93A0;"
+            onclick="_toggleLiveMode()"
+            title="Toggle 30-second auto-polling from USGS">
+            AUTO: OFF
+          </button>
+        </div>
+        <div class="demo-sub" id="demo-sub-text">Simulates full Sentinel AI pipeline · Kerala Flood</div>
+      </div>
+    </div>
+
+    <!-- RIGHT TOP: Stats + Alerts + Decision Log tabs -->
+    <div class="right-top">
+      <div class="tabs">
+        <button class="tab active" onclick="switchTab(this,'overview')">Overview</button>
+        <button class="tab" onclick="switchTab(this,'decision')">Decision Log</button>
+        <button class="tab" onclick="switchTab(this,'timeline')">Timeline</button>
+      </div>
+
+      <div class="panel-body">
+        <!-- OVERVIEW TAB -->
+        <div class="tab-content active" id="tab-overview">
+          <div class="stats-row">
+            <div class="stat-card">
+              <div class="stat-val" id="stat-incidents" style="color:#f07070">2</div>
+              <div class="stat-lbl">Active Incidents</div>
+              <div class="stat-delta" id="delta-incidents"></div>
+              <div class="stat-bar">
+                <div class="stat-bar-fill" id="bar-incidents" style="width:40%;background:var(--red)"></div>
+              </div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-val" id="stat-units" style="color:#70b0f0">3</div>
+              <div class="stat-lbl">Units Deployed</div>
+              <div class="stat-delta" id="delta-units"></div>
+              <div class="stat-bar">
+                <div class="stat-bar-fill" id="bar-units" style="width:30%"></div>
+              </div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-val" id="stat-triage" style="color:#5bc45b">12</div>
+              <div class="stat-lbl">Triage Chats</div>
+              <div class="stat-delta" id="delta-triage"></div>
+              <div class="stat-bar">
+                <div class="stat-bar-fill" id="bar-triage" style="width:60%;background:var(--green)"></div>
+              </div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-val" id="stat-sms" style="color:#f0b870">8</div>
+              <div class="stat-lbl">SMS Dispatched</div>
+              <div class="stat-delta" id="delta-sms"></div>
+              <div class="stat-bar">
+                <div class="stat-bar-fill" id="bar-sms" style="width:50%;background:var(--amber)"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Confidence block -->
+          <div class="confidence-block" id="conf-block" style="display:none">
+            <div class="conf-header">
+              <span class="conf-title">System Confidence</span>
+              <span class="conf-val" id="conf-val">--</span>
+            </div>
+            <div class="conf-bar-track">
+              <div class="conf-bar-fill" id="conf-bar" style="width:0%"></div>
+            </div>
+            <div class="conf-warn" id="conf-warn" style="display:none">
+              <span>▲</span><span id="conf-warn-text">Possible underestimation — data sparse</span>
+            </div>
+            <div class="conf-reeval" id="conf-reeval" style="display:none">Re-evaluating in <span
+                id="reeval-counter">30</span>s</div>
+          </div>
+
+          <!-- Failure card -->
+          <div class="failure-card" id="failure-card">
+            <div class="failure-title">DEPLOYMENT DISRUPTION</div>
+            <div class="failure-body" id="failure-body">Team Alpha delayed — road blocked at Zone 3 checkpoint</div>
+            <div class="failure-action" id="failure-action">→ Re-routing via NH-66 bypass...</div>
+          </div>
+
+          <!-- Alerts -->
+          <div class="alert-list">
+            <div class="alert-item crit">
+              <div class="alert-top"><span class="alert-title">Flash flood · Wayanad</span><span
+                  class="alert-time">14:28</span></div>
+              <div class="alert-sub">NOAA severity 4 · 3 units dispatched</div>
+            </div>
+            <div class="alert-item warn">
+              <div class="alert-top"><span class="alert-title">Tremor · Kozhikode</span><span
+                  class="alert-time">14:11</span></div>
+              <div class="alert-sub">USGS M3.2 · monitoring</div>
+            </div>
+            <div class="alert-item ok">
+              <div class="alert-top"><span class="alert-title">Landslide risk · Idukki</span><span
+                  class="alert-time">13:55</span></div>
+              <div class="alert-sub">Pre-warning issued · no dispatch</div>
+            </div>
+            <div class="alert-item crit" id="new-alert" style="display:none">
+              <div class="alert-top"><span class="alert-title" id="new-alert-title">Flash Flood · Alappuzha</span><span
+                  class="alert-time" id="new-alert-time">--:--</span></div>
+              <div class="alert-sub" id="new-alert-sub">Severity 8.7 · Pipeline activated</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- DECISION LOG TAB -->
+        <div class="tab-content" id="tab-decision">
+          <div
+            style="font-size:10px;font-family:var(--mono);color:var(--text3);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.06em">
+            Agent Reasoning Stream</div>
+          <div class="agent-step-bar" id="agent-step-bar" style="display:none">
+            <span class="agent-step" id="step-sentinel">SENTINEL</span>
+            <span class="agent-step" id="step-severity">SEVERITY</span>
+            <span class="agent-step" id="step-resource">RESOURCE</span>
+            <span class="agent-step" id="step-comms">COMMS</span>
+            <span class="agent-step" id="step-triage">TRIAGE</span>
+          </div>
+          <!-- PHASE 3: Team Status Progression -->
+          <div class="team-status-strip" id="team-status-strip" style="display:none">
+            <div class="team-row" id="trow-alpha">
+              <span class="team-name">Team Alpha <span style="font-weight:400;color:var(--text3)">· S&amp;R</span></span>
+              <span class="team-badge dispatching" id="tbadge-alpha">DISPATCHING</span>
+            </div>
+            <div class="team-row" id="trow-rajan">
+              <span class="team-name">Rajan K. <span style="font-weight:400;color:var(--text3)">· Medical</span></span>
+              <span class="team-badge dispatching" id="tbadge-rajan">DISPATCHING</span>
+            </div>
+            <div class="team-row" id="trow-meera">
+              <span class="team-name">Meera P. <span style="font-weight:400;color:var(--text3)">· Logistics</span></span>
+              <span class="team-badge dispatching" id="tbadge-meera">DISPATCHING</span>
+            </div>
+          </div>
+          <div class="log-list" id="decision-log">
+            <div style="font-size:11px;color:var(--text3);text-align:center;padding:20px;font-family:var(--mono)">
+              Awaiting pipeline trigger…</div>
+          </div>
+        </div>
+
+        <!-- TIMELINE TAB -->
+        <div class="tab-content" id="tab-timeline">
+          <div
+            style="font-size:10px;font-family:var(--mono);color:var(--text3);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.06em">
+            Event Feed</div>
+          <div class="timeline" id="timeline-feed">
+            <div style="font-size:11px;color:var(--text3);text-align:center;padding:20px;font-family:var(--mono)">No
+              events yet — trigger demo to begin</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT BOTTOM: Triage Chat + SMS Log + Hospitals tabs -->
+    <div class="right-bottom">
+      <div class="tabs">
+        <button class="tab active" onclick="switchTab(this,'chat')">Triage Chat</button>
+        <button class="tab" onclick="switchTab(this,'sms')">SMS Log</button>
+        <button class="tab" onclick="switchTab(this,'hospitals')" id="hospitals-tab" style="position:relative">Hospitals<span id="hosp-tab-dot" style="display:none;position:absolute;top:6px;right:4px;width:5px;height:5px;background:#1D9E75;border-radius:50%;"></span></button>
+      </div>
+
+      <!-- CHAT TAB -->
+      <div class="tab-content active" id="tab-chat" style="display:flex;flex-direction:column;flex:1;overflow:hidden">
+        <div class="chat-context-bar" id="chat-context-bar">
+          ⚑ HIGH-RISK ZONE · Alappuzha flood active · Medical teams alerted
+        </div>
+        <div class="chat-messages" id="chat-messages">
+          <div class="bubble user">I have a headache, vomiting and can't walk straight</div>
+          <div class="bubble agent">
+            How long have these symptoms been going on? Any head injury in the past 24 hours?
+          </div>
+          <div class="bubble user">About 2 hours, no injury</div>
+          <div class="bubble agent">
+            This could indicate dehydration or low blood pressure from the heat.<br><br>
+            <span class="bubble-tag info">Go to nearest relief camp within 1 hr</span>
+          </div>
+        </div>
+        <div class="chat-typing" id="chat-typing">
+          <div class="typing-dots"><span></span><span></span><span></span></div>
+        </div>
+        <div class="chat-conf" id="chat-conf" style="display:none">Confidence: <span id="chat-conf-val">--</span>% |
+          Location: Alappuzha Ward 5</div>
+        <div class="chat-footer">
+          <input class="chat-input" id="chat-input" placeholder="Describe symptoms or location…"
+            onkeydown="if(event.key==='Enter')sendChat()" />
+          <button class="chat-send" onclick="sendChat()">Send</button>
+        </div>
+      </div>
+
+      <!-- SMS TAB -->
+      <div class="tab-content" id="tab-sms" style="overflow-y:auto">
+        <div style="padding:12px">
+          <div class="sms-list" id="sms-list">
+            <div class="sms-item">
+              <div class="sms-header">
+                <span class="sms-to">+91 98765 43210 · Unit V-03</span>
+                <span class="sms-time">14:29</span>
+              </div>
+              <div class="sms-body">Deploy to zone 3, Alappuzha. Bring 10 water kits. ETA 15 min. – Sentinel AI</div>
+              <div class="sms-status-row">
+                <span class="sms-stage delivered">✔ DELIVERED</span>
+                <span class="sms-stage ack">✔✔ ACK</span>
+              </div>
+            </div>
+            <div class="sms-item">
+              <div class="sms-header">
+                <span class="sms-to">+91 87654 32109 · Unit V-07</span>
+                <span class="sms-time">14:30</span>
+              </div>
+              <div class="sms-body">Medical supplies needed at Wayanad camp 2. Proceed immediately. – Sentinel AI</div>
+              <div class="sms-status-row">
+                <span class="sms-stage delivered">✔ DELIVERED</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- HOSPITALS TAB -->
+      <div class="tab-content" id="tab-hospitals" style="overflow-y:auto">
+        <div style="padding:12px">
+          <div id="hospital-api-error" class="hospital-api-error">
+            ⚠ Hospital alert API unavailable — backend connection failed
+          </div>
+          <div class="hospital-panel" id="hospital-panel">
+            <div class="hospital-panel-header">
+              Hospitals Notified
+              <span class="hosp-count-badge" id="hosp-count-badge">0</span>
+            </div>
+            <div class="hospital-list" id="hospital-list">
+              <div style="font-size:11px;color:var(--text3);text-align:center;padding:20px;font-family:var(--mono)">
+                Awaiting incident trigger…
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    /* ═══════════════════════════════════════════
+       BACKEND CONNECTION CONSTANTS
+    ═══════════════════════════════════════════ */
+    const API_BASE = "http://localhost:3001";
+    const WS_BASE  = "ws://localhost:3001";
+
+    console.log("FORCED API:", API_BASE);
+    console.log("FORCED WS:", WS_BASE);
+
+    /* ── Health check — ping backend on load ── */
+    (async function healthCheck() {
+      console.log('[ReliefAI] Connecting to backend...');
+      try {
+        const res = await fetch(API_BASE + '/health');
+        if (res.ok) {
+          console.log('[ReliefAI] Backend health check passed ✔');
+        } else {
+          console.warn('[ReliefAI] Backend health check returned HTTP', res.status);
+        }
+      } catch (err) {
+        console.warn('[ReliefAI] Backend unreachable:', err.message);
+      }
+    })();
+
+    /* ═══════════════════════════════════════════
+       CLOCK
+    ═══════════════════════════════════════════ */
+    function updateClock() {
+      const d = new Date();
+      document.getElementById('clock').textContent =
+        d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }) + ' IST';
+    }
+    setInterval(updateClock, 1000); updateClock();
+
+    /* ═══════════════════════════════════════════
+       TAB SWITCHER
+    ═══════════════════════════════════════════ */
+    function switchTab(btn, id) {
+      const parent = btn.closest('.right-top,.right-bottom');
+      parent.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      btn.classList.add('active');
+      // hide all tab-content in same parent
+      parent.querySelectorAll('.tab-content').forEach(tc => {
+        tc.classList.remove('active');
+        tc.style.display = 'none';
+      });
+      const target = document.getElementById('tab-' + id);
+      if (target) {
+        target.classList.add('active');
+        target.style.display = (id === 'chat') ? 'flex' : 'block';
+      }
+    }
+    // init SMS tab display
+    document.getElementById('tab-sms').style.display = 'none';
+
+    /* ═══════════════════════════════════════════
+       ANIMATED COUNTER
+    ═══════════════════════════════════════════ */
+    function animateCount(elId, from, to, duration = 800, color = null) {
+      const el = document.getElementById(elId);
+      if (!el) return;
+      const start = performance.now();
+      function step(now) {
+        const progress = Math.min((now - start) / duration, 1);
+        const ease = 1 - Math.pow(1 - progress, 3);
+        const current = Math.round(from + (to - from) * ease);
+        el.textContent = current.toLocaleString();
+        el.classList.add('counting');
+        if (progress < 1) requestAnimationFrame(step);
+        else { el.textContent = to.toLocaleString(); el.classList.remove('counting') }
+      }
+      requestAnimationFrame(step);
+    }
+
+    /* ═══════════════════════════════════════════
+       DECISION LOG
+    ═══════════════════════════════════════════ */
+    let decisionLogEl = document.getElementById('decision-log');
+    function addDecisionLog(agent, cls, msg, headline = false) {
+      if (decisionLogEl.children.length === 1 && decisionLogEl.children[0].tagName === 'DIV'
+        && decisionLogEl.children[0].style.textAlign === 'center') {
+        decisionLogEl.innerHTML = '';
+      }
+      const d = new Date();
+      const time = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
+      const el = document.createElement('div');
+      el.className = 'log-entry';
+      el.innerHTML = `
+    <span class="log-time">${time}</span>
+    <div class="log-dot ${cls}"></div>
+    <div class="log-right">
+      <div class="log-agent">${agent}</div>
+      <div class="log-msg${headline ? ' headline' : ''}">${msg}</div>
+    </div>`;
+      decisionLogEl.insertBefore(el, decisionLogEl.firstChild);
+      // keep max 40
+      while (decisionLogEl.children.length > 40) decisionLogEl.removeChild(decisionLogEl.lastChild);
+    }
+
+    /* ═══════════════════════════════════════════
+       TIMELINE
+    ═══════════════════════════════════════════ */
+    let timelineEl = document.getElementById('timeline-feed');
+    let timelineItems = [];
+    function addTimeline(label, badge, badgeCls) {
+      if (timelineEl.children.length === 1 && timelineEl.children[0].style.textAlign === 'center') {
+        timelineEl.innerHTML = '';
+      }
+      const d = new Date();
+      const time = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+      const item = { label, badge, badgeCls, time, state: 'active' };
+      timelineItems.push(item);
+      // mark previous active as done
+      timelineEl.querySelectorAll('.tl-dot.active').forEach(dt => dt.classList.replace('active', 'done'));
+      const el = document.createElement('div');
+      el.className = 'tl-item';
+      el.innerHTML = `
+    <div class="tl-dot-wrap"><div class="tl-dot active"></div><div class="tl-line"></div></div>
+    <div class="tl-content">
+      <div class="tl-time">${time}</div>
+      <div class="tl-label">${label}</div>
+      ${badge ? `<span class="tl-badge ${badgeCls}">${badge}</span>` : ''}
+    </div>`;
+      timelineEl.insertBefore(el, timelineEl.firstChild);
+    }
+
+    /* ═══════════════════════════════════════════
+       SMS LOG
+    ═══════════════════════════════════════════ */
+    let smsList = document.getElementById('sms-list');
+    function addSMS(to, msg, stages) {
+      const d = new Date();
+      const time = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+      const item = document.createElement('div');
+      item.className = 'sms-item';
+      item.innerHTML = `
+    <div class="sms-header"><span class="sms-to">${to}</span><span class="sms-time">${time}</span></div>
+    <div class="sms-body">${msg}</div>
+    <div class="sms-status-row">
+      <span class="sms-stage sending">⟳ SENDING…</span>
+    </div>`;
+      smsList.insertBefore(item, smsList.firstChild);
+      const row = item.querySelector('.sms-status-row');
+      // SENDING → SENT after 5 seconds
+      setTimeout(() => {
+        row.innerHTML = '<span class="sms-stage sent">✔ SENT</span>';
+      }, 5000);
+      // SENT → DELIVERED after 10 more seconds (15s total)
+      setTimeout(() => {
+        row.innerHTML = '<span class="sms-stage sent">✔ SENT</span><span class="sms-stage delivered">✔ DELIVERED</span>';
+      }, 15000);
+      // DELIVERED → ACK after 10 more seconds (25s total)
+      if (stages === 'ack') {
+        setTimeout(() => {
+          row.innerHTML = '<span class="sms-stage sent">✔ SENT</span><span class="sms-stage delivered">✔ DELIVERED</span><span class="sms-stage ack">✔✔ ACK</span>';
+        }, 25000);
+      }
+      // update counter
+      let cur = parseInt(document.getElementById('stat-sms').textContent.replace(/,/g, '')) || 0;
+      animateCount('stat-sms', cur, cur + 1, 400);
+    }
+
+    /* ═══════════════════════════════════════════
+       HOSPITAL ALERT SYSTEM
+       sendAlert(lat, lng, type) → POST /api/alert
+       Displays hospitals on map + panel
+    ═══════════════════════════════════════════ */
+
+    // Leaflet markers for hospitals (kept so we can clear on re-run)
+    let _hospMarkers  = [];
+    let _hospLines    = []; // SVG lines in map-svg
+
+    /* ── Clear previous hospital state ── */
+    function _clearHospitals() {
+      _hospMarkers.forEach(m => { try { m.remove(); } catch(e){} });
+      _hospMarkers = [];
+      // Remove SVG lines
+      _hospLines.forEach(el => { try { el.remove(); } catch(e){} });
+      _hospLines = [];
+      // Reset panel
+      const list = document.getElementById('hospital-list');
+      if (list) list.innerHTML = '<div style="font-size:11px;color:var(--text3);text-align:center;padding:20px;font-family:var(--mono)">Awaiting incident trigger…</div>';
+      const panel = document.getElementById('hospital-panel');
+      if (panel) panel.classList.remove('show');
+      const errEl = document.getElementById('hospital-api-error');
+      if (errEl) errEl.classList.remove('show');
+      const badge = document.getElementById('hosp-count-badge');
+      if (badge) badge.textContent = '0';
+      const dot = document.getElementById('hosp-tab-dot');
+      if (dot) dot.style.display = 'none';
+    }
+
+    /* ── Place a hospital Leaflet marker ── */
+    function _placeHospitalMarker(hospital) {
+      if (!window.lmap) return;
+      const lat = hospital.lat ?? hospital.latitude;
+      const lng = hospital.lng ?? hospital.longitude ?? hospital.lon;
+      if (lat == null || lng == null) return;
+
+      const icon = L.divIcon({
+        className: '',
+        html: `<div style="
+          width:14px;height:14px;
+          background:#1D9E75;
+          border:2px solid #0d1a13;
+          border-radius:50%;
+          box-shadow:0 0 10px rgba(29,158,117,0.8),0 0 20px rgba(29,158,117,0.4);
+        "></div>`,
+        iconSize: [14,14],
+        iconAnchor: [7,7],
+      });
+
+      const marker = L.marker([lat, lng], { icon })
+        .bindPopup(`<b style="font-family:monospace;color:#1D9E75">${hospital.name || 'Hospital'}</b><br>
+          <span style="font-family:monospace;font-size:11px;color:#aaa">${hospital.distance != null ? (typeof hospital.distance === 'number' ? hospital.distance.toFixed(1)+' km' : hospital.distance) : ''}</span>`, {
+          className: 'hosp-popup'
+        })
+        .addTo(window.lmap);
+
+      _hospMarkers.push(marker);
+    }
+
+    /* ── Draw SVG dashed line from incident core to hospital dot position ── */
+    function _drawHospitalLine(disasterLatLng, hospLatLng) {
+      if (!window.lmap) return;
+      // Convert both lat/lng to SVG container pixel coords isn't trivial across projections.
+      // Instead, we use the Leaflet overlay itself — draw a polyline on the map.
+      const line = L.polyline([disasterLatLng, hospLatLng], {
+        color: '#1D9E75',
+        weight: 1.5,
+        opacity: 0.55,
+        dashArray: '5 4',
+        className: 'hosp-line-leaflet',
+      }).addTo(window.lmap);
+      _hospLines.push(line);
+    }
+
+    /* ── Render hospitals panel ── */
+    function _renderHospitalsPanel(hospitals, disasterLatLng) {
+      const list = document.getElementById('hospital-list');
+      const panel = document.getElementById('hospital-panel');
+      const badge = document.getElementById('hosp-count-badge');
+      const dot   = document.getElementById('hosp-tab-dot');
+
+      if (!hospitals || hospitals.length === 0) return;
+
+      list.innerHTML = '';
+      panel.classList.add('show');
+      badge.textContent = hospitals.length;
+      dot.style.display = 'block';
+
+      hospitals.forEach((h, i) => {
+        const name = h.name || h.hospital_name || `Hospital ${i+1}`;
+        const dist = h.distance != null
+          ? (typeof h.distance === 'number' ? h.distance.toFixed(1) + ' km' : h.distance)
+          : '—';
+        const phone = h.phone || h.contact || '';
+
+        const item = document.createElement('div');
+        item.className = 'hospital-item';
+        item.style.animationDelay = (i * 80) + 'ms';
+        item.innerHTML = `
+          <div class="hospital-item-top">
+            <div class="hospital-name">🏥 ${name}</div>
+            <span class="hospital-alert-badge">✔ ALERT SENT</span>
+          </div>
+          <div class="hospital-meta">
+            <span class="hospital-dist">${dist}</span>
+            ${phone ? `<span>${phone}</span>` : ''}
+          </div>`;
+        list.appendChild(item);
+
+        // Place on map
+        const lat = h.lat ?? h.latitude;
+        const lng = h.lng ?? h.longitude ?? h.lon;
+        if (lat != null && lng != null) {
+          _placeHospitalMarker(h);
+          if (disasterLatLng) {
+            _drawHospitalLine(disasterLatLng, [lat, lng]);
+          }
+        }
+      });
+
+      // Log to decision stream
+      addDecisionLog('Comms Agent', 'comms',
+        `Hospital alerts sent to ${hospitals.length} facility${hospitals.length > 1 ? 'ies' : ''} within 10km`, true);
+      addTimeline(`Hospitals alerted · ${hospitals.length}`, 'SMS SENT', 'green');
+    }
+
+    /* ── sendAlert: mock hospital data (no external API) ── */
+    function sendAlert(lat, lng, type) {
+      console.log(`[Hospital Alert] Sending alert — lat:${lat}, lng:${lng}, type:${type}`);
+      // Clear any previous hospital state
+      _clearHospitals();
+
+      const mockHospitals = [
+        { name: "City General Hospital", distance: "1.2 km", status: "Available" },
+        { name: "Apollo Emergency Center", distance: "2.8 km", status: "Busy" },
+        { name: "St. John's Medical", distance: "3.5 km", status: "Available" }
+      ];
+
+      console.log("Hospitals alerted:", mockHospitals);
+
+      try {
+        const disasterLatLng = (lat != null && lng != null) ? [lat, lng] : null;
+        _renderHospitalsPanel(mockHospitals, disasterLatLng);
+      } catch (err) {
+        // FAILSAFE: if rendering fails, show fallback text
+        console.error('[Hospital Alert] Render error:', err.message);
+        const panel = document.getElementById('hospital-panel');
+        if (panel) panel.classList.add('show');
+        const list = document.getElementById('hospital-list');
+        if (list) list.innerHTML = '<div style="font-size:11px;color:#5bc45b;text-align:center;padding:20px;font-family:var(--mono)">Hospital system active</div>';
+        const badge = document.getElementById('hosp-count-badge');
+        if (badge) badge.textContent = '3';
+        const dot = document.getElementById('hosp-tab-dot');
+        if (dot) dot.style.display = 'block';
+      }
+    }
+    let reevalTimer = null;
+    function showConfidence(val, warnText) {
+      document.getElementById('conf-block').style.display = 'block';
+      document.getElementById('conf-val').textContent = val;
+      document.getElementById('conf-bar').style.width = val + '%';
+      document.getElementById('mb-conf').style.display = 'block';
+      document.getElementById('mb-conf-val').textContent = val;
+      if (warnText) {
+        document.getElementById('conf-warn').style.display = 'flex';
+        document.getElementById('conf-warn-text').textContent = warnText;
+      }
+      document.getElementById('conf-reeval').style.display = 'block';
+      startReevalCountdown(30);
+    }
+    function startReevalCountdown(secs) {
+      clearInterval(reevalTimer);
+      let count = secs;
+      document.getElementById('reeval-counter').textContent = count;
+      reevalTimer = setInterval(() => {
+        count--;
+        document.getElementById('reeval-counter').textContent = count;
+        if (count <= 0) {
+          clearInterval(reevalTimer);
+          // bump confidence slightly
+          let cur = parseInt(document.getElementById('conf-val').textContent);
+          let next = Math.min(99, cur + Math.floor(Math.random() * 5) + 2);
+          document.getElementById('conf-val').textContent = next;
+          document.getElementById('conf-bar').style.width = next + '%';
+          document.getElementById('mb-conf-val').textContent = next;
+          document.getElementById('conf-reeval').style.display = 'none';
+          document.getElementById('conf-warn').style.display = 'none';
+        }
+      }, 1000);
+    }
+
+    /* ═══════════════════════════════════════════
+       MAP REVEAL — CINEMATIC
+    ═══════════════════════════════════════════ */
+    function flashMap() {
+      const f = document.getElementById('flash-overlay');
+      f.classList.add('active');
+      setTimeout(() => f.classList.remove('active'), 200);
+    }
+
+    /* ── Incident Core ── */
+    function revealIncident() {
+      flashMap();
+      const core = document.getElementById('incident-core');
+      core.style.display = 'block';
+      core.animate([{ opacity: 0, transform: 'scale(0.3)' }, { opacity: 1, transform: 'scale(1)' }],
+        { duration: 700, fill: 'forwards', easing: 'cubic-bezier(0.34,1.56,0.64,1)' });
+      setTimeout(() => {
+        const pin = document.getElementById('incident-pin');
+        pin.style.display = 'block';
+        pin.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 400, fill: 'forwards' });
+      }, 500);
+    }
+
+    /* ── Dynamic Volunteers (20–30 green dots) ── */
+    const CX = 300, CY = 200; // incident center
+    const volData = [];     // {id, x, y, vx, vy, label, routeEl}
+
+    function _randScatter(n) {
+      /* Land-biased scatter for Alappuzha region.
+         SVG viewBox 600x500, incident core at (300,200).
+         TASK 2: Only 30% units inside hazard radius (~80px), 70% spread outside moving inward.
+      */
+      const HAZARD_R = 80;
+      const LAND_ZONES_OUTER = [
+        { x1: 130, x2: 220, y1: 80,  y2: 200, weight: 0.20 },
+        { x1: 380, x2: 510, y1: 100, y2: 320, weight: 0.25 },
+        { x1: 180, x2: 420, y1: 310, y2: 420, weight: 0.25 },
+        { x1: 260, x2: 460, y1: 60,  y2: 140, weight: 0.30 },
+      ];
+      const LAND_ZONES_INNER = [
+        { x1: 240, x2: 355, y1: 140, y2: 255, weight: 1.0 },
+      ];
+
+      function pickFromZones(zones, count) {
+        const cumWeights = [];
+        let cum = 0;
+        zones.forEach(z => { cum += z.weight; cumWeights.push(cum); });
+        const pts = [];
+        for (let i = 0; i < count; i++) {
+          const r = Math.random();
+          const zi = cumWeights.findIndex(w => r <= w);
+          const zone = zones[Math.max(0, zi)];
+          let x, y, tries = 0;
+          // For outer: ensure NOT inside hazard; for inner: ensure inside hazard
+          do {
+            x = zone.x1 + Math.random() * (zone.x2 - zone.x1);
+            y = zone.y1 + Math.random() * (zone.y2 - zone.y1);
+            tries++;
+          } while (tries < 20);
+          pts.push({ x, y });
+        }
+        return pts;
+      }
+
+      const innerCount = Math.round(n * 0.30);
+      const outerCount = n - innerCount;
+      return [...pickFromZones(LAND_ZONES_INNER, innerCount), ...pickFromZones(LAND_ZONES_OUTER, outerCount)];
+    }
+
+    /* ── Team label data for volunteers ── */
+    const VOL_TEAMS = [
+      { team: 'Alpha',   role: 'Medical'   },
+      { team: 'Bravo',   role: 'Rescue'    },
+      { team: 'Charlie', role: 'Logistics' },
+      { team: 'Delta',   role: 'Support'   },
+    ];
+    const VOL_NAMES = [
+      'Rajan K.','Meera P.','Arun S.','Divya R.','Suresh N.',
+      'Anita V.','Kiran M.','Priya L.','Rahul T.','Nisha C.',
+      'Vikram J.','Leela D.','Arjun B.','Sneha W.','Mohan F.',
+      'Kavya G.','Sanjay H.','Rekha I.','Ashok O.','Pooja U.',
+      'Deepak Q.','Asha X.','Girish Y.','Lata Z.',
+    ];
+
+    function buildVolunteers() {
+      const grp = document.getElementById('vol-group');
+      grp.innerHTML = '';
+      volData.length = 0;
+      const COUNT = 6;
+
+      const pts = [];
+      for (let i = 0; i < COUNT; i++) {
+        const angle = (Math.PI * 2 * i / COUNT) + (Math.random() - 0.5) * 0.6;
+        const dist = 60 + Math.random() * 120;
+        const x = Math.max(40, Math.min(550, CX + Math.cos(angle) * dist));
+        const y = Math.max(40, Math.min(450, CY + Math.sin(angle) * dist));
+        pts.push({ x, y });
+      }
+
+      pts.forEach((p, i) => {
+        const opacity = (0.75 + Math.random() * 0.25).toFixed(2);
+        const floatDelay = (Math.random() * 2.2).toFixed(2);
+        const teamInfo  = VOL_TEAMS[i % VOL_TEAMS.length];
+        const personName = VOL_NAMES[i] || `V-${String(i+1).padStart(2,'0')}`;
+        const x = p.x, y = p.y;
+        const vx = (Math.random() - 0.5) * 0.4;
+        const vy = (Math.random() - 0.5) * 0.4;
+        const r = 4 + Math.random() * 1.5;
+
+        const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        g.setAttribute('class', 'vol-unit');
+        g.setAttribute('id', 'vg-' + i);
+        g.style.opacity = 0;
+        g.setAttribute('transform', `translate(${x.toFixed(1)},${y.toFixed(1)})`);
+
+        const isSpecial = (i % VOL_TEAMS.length) === 0;
+        const dotColor = isSpecial ? '#ffd740' : '#4caf50';
+        const glowColor = isSpecial ? 'rgba(255,215,64,' : 'rgba(76,175,80,';
+
+        const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        c.setAttribute('class', 'dot');
+        c.setAttribute('r', r.toFixed(1));
+        c.setAttribute('fill', dotColor);
+        c.setAttribute('stroke', '#0d1a0d');
+        c.setAttribute('stroke-width', '1.5');
+        c.style.filter = `drop-shadow(0 0 6px ${glowColor}${opacity}))`;
+        c.style.opacity = opacity;
+        c.style.animationDelay = floatDelay + 's';
+
+        const lx = (r + 5).toFixed(1);
+        const t1 = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        t1.setAttribute('class', 'lbl-team');
+        t1.setAttribute('x', lx);
+        t1.setAttribute('y', '-3');
+        t1.setAttribute('fill', isSpecial ? '#ffe082' : '#a5d6a7');
+        t1.setAttribute('font-size', '6');
+        t1.setAttribute('font-weight', '600');
+        t1.setAttribute('font-family', 'IBM Plex Mono, monospace');
+        t1.setAttribute('dominant-baseline', 'middle');
+        t1.style.opacity = '1';
+        t1.textContent = `${teamInfo.team} · ${teamInfo.role}`;
+
+        const t2 = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        t2.setAttribute('class', 'lbl-name');
+        t2.setAttribute('x', lx);
+        t2.setAttribute('y', '6');
+        t2.setAttribute('fill', '#e0f2e0');
+        t2.setAttribute('font-size', '5.5');
+        t2.setAttribute('font-weight', '400');
+        t2.setAttribute('font-family', 'IBM Plex Mono, monospace');
+        t2.setAttribute('dominant-baseline', 'middle');
+        t2.style.opacity = '0.7';
+        t2.textContent = personName;
+
+        g.classList.add('vol-unit-marker');
+        g.dataset.dist = Math.hypot(x - CX, y - CY).toFixed(1);
+
+        g.appendChild(c); g.appendChild(t1); g.appendChild(t2);
+        grp.appendChild(g);
+        volData.push({ idx: i, x, y, vx, vy, label: personName, ox: x, oy: y });
+      });
+    }
+
+    function revealVolunteers() {
+      buildVolunteers();
+      const grp = document.getElementById('vol-group');
+      Array.from(grp.children).forEach((g, i) => {
+        setTimeout(() => {
+          g.animate([{ opacity: 0 }, { opacity: 1 }],
+            { duration: 350, fill: 'forwards', easing: 'ease-out' });
+          setTimeout(() => { g.style.opacity = 1; }, 300);
+        }, i * 80);
+      });
+      document.getElementById('mb-units').textContent = volData.length;
+    }
+
+    /* ── Dynamic Resource Units (10–15 blue dots) ── */
+    const resData = [];
+
+    /* ── Team label data for resources ── */
+    const RES_TEAMS = [
+      { team: 'Alpha',   role: 'Medical'   },
+      { team: 'Bravo',   role: 'Rescue'    },
+      { team: 'Charlie', role: 'Logistics' },
+      { team: 'Delta',   role: 'Support'   },
+    ];
+    const RES_NAMES = [
+      'Med Van 1','Boat Unit','Supply Truck','Rescue Rig',
+      'Amb. Unit','Med Van 2','Drone Ops','Evacuation',
+      'Water Ops','Power Unit','Field Kit','Radio Unit',
+    ];
+
+    function buildResources() {
+      const grp = document.getElementById('res-group');
+      grp.innerHTML = '';
+      resData.length = 0;
+      const COUNT = 6;
+
+      const pts = [];
+      for (let i = 0; i < COUNT; i++) {
+        const angle = (Math.PI * 2 * i / COUNT) + (Math.random() - 0.5) * 0.5;
+        const dist = 80 + Math.random() * 160;
+        const x = Math.max(50, Math.min(540, CX + Math.cos(angle) * dist));
+        const y = Math.max(50, Math.min(440, CY + Math.sin(angle) * dist));
+        pts.push({ x, y });
+      }
+
+      pts.forEach((p, i) => {
+        const x = p.x, y = p.y;
+        const vx = (Math.random() - 0.5) * 0.25;
+        const vy = (Math.random() - 0.5) * 0.25;
+        const opacity = (0.8 + Math.random() * 0.2).toFixed(2);
+        const teamInfo  = RES_TEAMS[i % RES_TEAMS.length];
+        const unitName  = RES_NAMES[i] || `R-${String(i+1).padStart(2,'0')}`;
+        const r = 6 + Math.random() * 2;
+
+        const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        g.setAttribute('class', 'res-unit near');
+        g.setAttribute('id', 'rg-' + i);
+        g.setAttribute('transform', `translate(${x.toFixed(1)},${y.toFixed(1)})`);
+
+        const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        c.setAttribute('class', 'dot');
+        c.setAttribute('r', r.toFixed(1));
+        c.setAttribute('fill', '#1e88e5');
+        c.setAttribute('stroke', '#0d1a2e');
+        c.setAttribute('stroke-width', '1.5');
+        c.style.filter = `drop-shadow(0 0 8px rgba(55,138,221,${opacity}))`;
+        c.style.opacity = opacity;
+        c.style.animationDelay = (Math.random() * 3) + 's';
+
+        const lx = (r + 5).toFixed(1);
+        const t1 = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        t1.setAttribute('class', 'lbl-team');
+        t1.setAttribute('x', lx);
+        t1.setAttribute('y', '-3');
+        t1.setAttribute('fill', '#90caf9');
+        t1.setAttribute('font-size', '6');
+        t1.setAttribute('font-weight', '600');
+        t1.setAttribute('font-family', 'IBM Plex Mono, monospace');
+        t1.setAttribute('dominant-baseline', 'middle');
+        t1.textContent = `${teamInfo.team} · ${teamInfo.role}`;
+        t1.style.opacity = '1';
+
+        const t2 = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        t2.setAttribute('class', 'lbl-name');
+        t2.setAttribute('x', lx);
+        t2.setAttribute('y', '6');
+        t2.setAttribute('fill', '#e3f2fd');
+        t2.setAttribute('font-size', '5.5');
+        t2.setAttribute('font-weight', '400');
+        t2.setAttribute('font-family', 'IBM Plex Mono, monospace');
+        t2.setAttribute('dominant-baseline', 'middle');
+        t2.textContent = unitName;
+        t2.style.opacity = '0.65';
+
+        g.appendChild(c); g.appendChild(t1); g.appendChild(t2);
+        grp.appendChild(g);
+        resData.push({ idx: i, x, y, vx, vy, ox: x, oy: y });
+      });
+    }
+
+    /* ── Build cubic bezier control points for flight-path arc ── */
+    function _buildBezierCurve(x0, y0, x1, y1) {
+      const dx = x1 - x0, dy = y1 - y0;
+      const len = Math.hypot(dx, dy) || 1;
+      const px = -dy / len, py = dx / len;
+      // Arc magnitude: 15–35% of path length, biased upward (negative py = up in SVG)
+      const arcSign = (Math.random() > 0.5 ? 1 : -1);
+      const arc1 = arcSign * (0.18 + Math.random() * 0.17) * len;
+      const arc2 = -arc1 * (0.25 + Math.random() * 0.35);
+      return {
+        x0, y0, x1, y1,
+        cp1x: x0 + dx * 0.33 + px * arc1,
+        cp1y: y0 + dy * 0.33 + py * arc1,
+        cp2x: x0 + dx * 0.67 + px * arc2,
+        cp2y: y0 + dy * 0.67 + py * arc2,
+      };
+    }
+
+    /* ── Evaluate cubic bezier at t ∈ [0,1] ── */
+    function _evalBezier(b, t) {
+      const mt = 1 - t;
+      return {
+        x: mt*mt*mt*b.x0 + 3*mt*mt*t*b.cp1x + 3*mt*t*t*b.cp2x + t*t*t*b.x1,
+        y: mt*mt*mt*b.y0 + 3*mt*mt*t*b.cp1y + 3*mt*t*t*b.cp2y + t*t*t*b.y1,
+      };
+    }
+
+    /* ── Build SVG cubic bezier path string ── */
+    function _bezierToPath(b) {
+      return `M ${b.x0.toFixed(1)} ${b.y0.toFixed(1)} C ${b.cp1x.toFixed(1)} ${b.cp1y.toFixed(1)}, ${b.cp2x.toFixed(1)} ${b.cp2y.toFixed(1)}, ${b.x1.toFixed(1)} ${b.y1.toFixed(1)}`;
+    }
+
+    /* ── Cinematic route draw-in ── */
+    function revealRoutesSequential() {
+      buildResources();
+      const grp = document.getElementById('routes-group');
+      grp.innerHTML = '';
+
+      // ── TASK 3+4: Only top 6 nearest agents participate; hide the rest ──
+      const allGs = Array.from(document.getElementById('res-group').children);
+      allGs.forEach((g, i) => {
+        if (i >= 6) {
+          // Push far off-viewport with near-zero opacity — not rendered visually
+          g.setAttribute('transform', `translate(-999,-999)`);
+          g.style.opacity = '0';
+          g.style.pointerEvents = 'none';
+        }
+      });
+
+      // Build one curved route per active resource unit (first 6 only)
+      const targets = resData.slice(0, 6);
+      targets.forEach((r, i) => {
+        // ── TASK 1: Cubic bezier arc ──
+        const curve = _buildBezierCurve(r.x, r.y, CX, CY);
+        r.curve    = curve;   // store for movement
+        r.progress = 0;
+
+        // Glow underlay (slightly thicker, blurred)
+        const glowColor  = i < 4 ? '#00e676' : '#ffca28';
+        const gradId     = i < 4 ? 'routeGrad0' : 'routeGrad1';
+
+        const pathGlow = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        pathGlow.setAttribute('d', _bezierToPath(curve));
+        pathGlow.setAttribute('fill', 'none');
+        pathGlow.setAttribute('stroke', glowColor);
+        pathGlow.setAttribute('stroke-width', '4');
+        pathGlow.setAttribute('opacity', '0');
+        pathGlow.setAttribute('filter', 'url(#routeGlow)');
+        pathGlow.setAttribute('id', 'route-glow-r' + i);
+        grp.appendChild(pathGlow);
+
+        // Main gradient path
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('d', _bezierToPath(curve));
+        path.setAttribute('fill', 'none');
+        path.setAttribute('stroke', `url(#${gradId})`);
+        path.setAttribute('stroke-width', '2');
+        path.setAttribute('stroke-dasharray', '8 6');
+        path.setAttribute('opacity', '0');
+        path.setAttribute('id', 'route-r' + i);
+        grp.appendChild(path);
+
+        setTimeout(() => {
+          const len = path.getTotalLength() || 400;
+          // Draw-in animation
+          path.style.strokeDasharray = `8 6`;
+          path.style.strokeDashoffset = len;
+          path.style.opacity = '0.9';
+          pathGlow.style.opacity = '0.3';
+
+          path.animate(
+            [{ strokeDashoffset: len, opacity: 0 }, { strokeDashoffset: 0, opacity: 0.9 }],
+            { duration: 900, delay: i * 150, fill: 'forwards', easing: 'cubic-bezier(0.22,1,0.36,1)' }
+          );
+          pathGlow.animate(
+            [{ opacity: 0 }, { opacity: 0.35 }],
+            { duration: 900, delay: i * 150, fill: 'forwards' }
+          );
+          setTimeout(() => {
+            path.style.strokeDasharray = '8 6';
+            path.style.strokeDashoffset = '0';
+            path.classList.add('route-live');
+            path.style.opacity = '0.9';
+          }, i * 150 + 1000);
+        }, 50);
+
+        r.routePathId     = 'route-r' + i;
+        r.routeGlowPathId = 'route-glow-r' + i;
+      });
+
+      // ── Also hide all volunteers (only active resources should be on screen) ──
+      const volGrp = document.getElementById('vol-group');
+      if (volGrp) {
+        Array.from(volGrp.children).forEach(g => {
+          g.style.opacity = '0';
+          g.style.display = 'none';
+        });
+      }
+    }
+
+    /* ── Live Motion System ── */
+    function _clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+    /* ── easeOutCubic for smooth deceleration near target ── */
+    function _easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
+
+    /* ── TASK 2: bezier-path movement, 2.5× faster, easeOutCubic ──
+       Active resource units (first 6): follow their bezier curve toward incident.
+       Remaining resources: hidden off-viewport. Volunteers: hidden. */
+    function animateVolunteers() {
+      resData.forEach((r, i) => {
+        // Skip non-active agents (already pushed off-viewport)
+        if (i >= 6) return;
+        const g = document.getElementById('rg-' + i);
+        if (!g) return;
+
+        if (r.curve && r.progress < 1) {
+          // TASK 2: ~2.5× faster than before (was 0.0022 at 800ms interval → now 0.006 at 300ms = ~2.4×)
+          const speed = i < 4 ? 0.006 : 0.005;
+          r.progress = Math.min(1, r.progress + speed);
+
+          // Apply easeOutCubic for smooth arrival
+          const easedT = _easeOutCubic(r.progress);
+          const pos = _evalBezier(r.curve, easedT);
+          r.x = pos.x;
+          r.y = pos.y;
+          g.setAttribute('transform', `translate(${r.x.toFixed(1)},${r.y.toFixed(1)})`);
+
+          // Add pulse class once moving
+          g.classList.add('res-active-moving');
+
+          // Redraw remaining bezier path from current position to incident
+          if (r.routePathId) {
+            const rp = document.getElementById(r.routePathId);
+            const rg = document.getElementById(r.routeGlowPathId);
+            if (rp && r.progress < 0.98) {
+              // Rebuild partial bezier: current pos → same CP2 and endpoint
+              const cb = r.curve;
+              // Approximate remaining as a new bezier from current pos
+              const remT = r.progress;
+              // De Casteljau subdivision: take the "right half" of the bezier from remT
+              function lerp(a, b, t) { return a + (b - a) * t; }
+              const m01x = lerp(cb.x0, cb.cp1x, remT), m01y = lerp(cb.y0, cb.cp1y, remT);
+              const m12x = lerp(cb.cp1x, cb.cp2x, remT), m12y = lerp(cb.cp1y, cb.cp2y, remT);
+              const m23x = lerp(cb.cp2x, cb.x1, remT), m23y = lerp(cb.cp2y, cb.y1, remT);
+              const m012x = lerp(m01x, m12x, remT), m012y = lerp(m01y, m12y, remT);
+              const m123x = lerp(m12x, m23x, remT), m123y = lerp(m12y, m23y, remT);
+              const newPath = `M ${r.x.toFixed(1)} ${r.y.toFixed(1)} C ${m123x.toFixed(1)} ${m123y.toFixed(1)}, ${m23x.toFixed(1)} ${m23y.toFixed(1)}, ${cb.x1.toFixed(1)} ${cb.y1.toFixed(1)}`;
+              rp.setAttribute('d', newPath);
+              if (rg) rg.setAttribute('d', newPath);
+            } else if (rp && r.progress >= 0.98) {
+              rp.style.opacity = '0';
+              if (rg) rg.style.opacity = '0';
+              g.classList.remove('res-active-moving');
+            }
+          }
+        }
+      });
+    }
+
+    /* ═══════════════════════════════════════════
+       TRIAGE CHAT — AI-powered
+    ═══════════════════════════════════════════ */
+    const TRIAGE_RESPONSES = [
+      { msg: "You are currently in a high-risk flood zone (Alappuzha Ward 5). Your symptoms suggest heat exhaustion combined with possible stress response.<br><br>Drink water immediately. Proceed to Relief Camp Alpha, 400m north.<br><br><span class='bubble-tag urgent'>Medical team notified — 8 min ETA</span>", conf: 87 },
+      { msg: "Based on your location near the flood perimeter, you may have been exposed to contaminated water. Avoid contact with floodwater.<br><br>Nearest elevated shelter: Community Hall, Ward 3.<br><br><span class='bubble-tag info'>Evacuation team alerted nearby</span>", conf: 79 },
+      { msg: "Chest tightness in high-stress disaster conditions can be anxiety-related or cardiac. Given your location in the active flood zone, we're treating this as priority.<br><br><span class='bubble-tag urgent'>Ambulance dispatched · ETA 12 min</span><br><span class='bubble-tag info'>Stay elevated. Keep visible.</span>", conf: 83 },
+      { msg: "Your child's symptoms match dehydration with minor fever. This is common in the displacement area. Oral Rehydration Salts are available at Camp B, 200m east.<br><br>A trained volunteer will reach you within 10 minutes.<br><br><span class='bubble-tag ok'>Non-critical — Camp redirect</span>", conf: 92 },
+    ];
+    let responseIdx = 0;
+    /* ── AI getAIResponse — calls backend /chat endpoint ── */
+    async function getAIResponse(message) {
+      const FALLBACK = 'Stay calm. Help is on the way. Move to a safe location.';
+      try {
+        console.log('[AI] Calling backend chat at:', API_BASE + '/chat', 'with:', message);
+        const res = await fetch(API_BASE + '/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message })
+        });
+        if (!res.ok) { console.error('[AI] Backend /chat HTTP ' + res.status, await res.text()); return FALLBACK; }
+        const data = await res.json();
+        if (data.reply) { console.log('[AI] Success:', data.reply); return data.reply; }
+        return FALLBACK;
+      } catch (err) {
+        console.error('[AI] error:', err.message);
+        return FALLBACK;
+      }
+    }
+
+    /* ── sendChat — async, fully awaited ── */
+    async function sendChat() {
+      const input = document.getElementById('chat-input');
+      const msg = input.value.trim();
+      if (!msg) return;
+      input.value = '';
+      const msgs = document.getElementById('chat-messages');
+      // User bubble
+      const ub = document.createElement('div');
+      ub.className = 'bubble user';
+      ub.textContent = msg;
+      msgs.appendChild(ub);
+      // "Analyzing situation..." loading bubble
+      const loadBubble = document.createElement('div');
+      loadBubble.className = 'bubble agent';
+      loadBubble.id = 'chat-load-bubble';
+      loadBubble.style.color = 'var(--amber)';
+      loadBubble.textContent = 'Analyzing situation...';
+      msgs.appendChild(loadBubble);
+      msgs.scrollTop = msgs.scrollHeight;
+      console.log('[Groq] Calling getAIResponse with:', msg);
+      // Await real AI response
+      const aiText = await getAIResponse(msg);
+      // Replace loading bubble with reply
+      const lb = document.getElementById('chat-load-bubble');
+      if (lb) { lb.removeAttribute('id'); lb.style.color = ''; lb.textContent = aiText; }
+      else { const ab = document.createElement('div'); ab.className = 'bubble agent'; ab.textContent = aiText; msgs.appendChild(ab); }
+      // Confidence
+      document.getElementById('chat-conf').style.display = 'block';
+      document.getElementById('chat-conf-val').textContent = (88 + Math.floor(Math.random() * 10)) + '%';
+      msgs.scrollTop = msgs.scrollHeight;
+      // Triage counter
+      const cur = parseInt(document.getElementById('stat-triage').textContent) || 0;
+      animateCount('stat-triage', cur, cur + 1, 400);
+    }
+
+    /* ═══════════════════════════════════════════
+       DEMO PIPELINE — fully sequential with delays
+    ═══════════════════════════════════════════ */
+    let demoRunning = false;
+    function delay(ms) { return new Promise(r => setTimeout(r, ms)) }
+
+    /* Queue-based log streamer — enforces 10-20s between each log entry */
+    const logQueue = [];
+    let logBusy = false;
+    function queueLog(agent, cls, msg, headline = false, delayMs = null) {
+      const d = delayMs != null ? delayMs : 10000 + Math.random() * 10000;
+      return new Promise(resolve => {
+        logQueue.push({ agent, cls, msg, headline, delayMs: d, resolve });
+        if (!logBusy) processLogQueue();
+      });
+    }
+    async function processLogQueue() {
+      if (logBusy || logQueue.length === 0) return;
+
+      logBusy = true;
+
+      while (logQueue.length > 0) {
+        const item = logQueue.shift();
+
+        await new Promise(res => setTimeout(res, item.delayMs));
+
+        addDecisionLog(item.agent, item.cls, item.msg, item.headline);
+
+        if (item.resolve) item.resolve();
+      }
+
+      logBusy = false;
+    }
+    /* Instant log for pipeline phases (no queue delay) */
+    function logNow(agent, cls, msg, headline = false) {
+      addDecisionLog(agent, cls, msg, headline);
+    }
+
+    /* ═══════════════════════════════════════════
+       PHASE 3 — INTELLIGENCE SYSTEM FUNCTIONS
+    ═══════════════════════════════════════════ */
+
+    /* logStep — logs a decision stream entry with a coloured step tag */
+    function logStep(agent, cls, tag, tagCls, msg, headline = false) {
+      if (decisionLogEl.children.length === 1 && decisionLogEl.children[0].tagName === 'DIV'
+        && decisionLogEl.children[0].style.textAlign === 'center') {
+        decisionLogEl.innerHTML = '';
+      }
+      const d = new Date();
+      const time = `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`;
+      const el = document.createElement('div');
+      el.className = 'log-entry';
+      el.innerHTML = `
+        <span class="log-time">${time}</span>
+        <div class="log-dot ${cls}"></div>
+        <div class="log-right">
+          <div class="log-agent">${agent}</div>
+          <div class="log-msg${headline ? ' headline' : ''}">
+            <span class="log-step-tag ${tagCls}">${tag}</span>${msg}
+          </div>
+        </div>`;
+      decisionLogEl.insertBefore(el, decisionLogEl.firstChild);
+      while (decisionLogEl.children.length > 40) decisionLogEl.removeChild(decisionLogEl.lastChild);
+    }
+
+    /* animateConfidenceTo — smoothly counts confidence from current to target */
+    function animateConfidenceTo(target, durationMs = 1800) {
+      const confValEl  = document.getElementById('conf-val');
+      const confBarEl  = document.getElementById('conf-bar');
+      const mbConfEl   = document.getElementById('mb-conf-val');
+      const start      = parseInt(confValEl.textContent) || 0;
+      const startTime  = performance.now();
+      function step(now) {
+        const t = Math.min((now - startTime) / durationMs, 1);
+        const ease = 1 - Math.pow(1 - t, 3);
+        const cur = Math.round(start + (target - start) * ease);
+        confValEl.textContent = cur;
+        confBarEl.style.width = cur + '%';
+        if (mbConfEl) mbConfEl.textContent = cur;
+        if (t < 1) {
+          requestAnimationFrame(step);
+        } else {
+          confValEl.textContent = target;
+          confValEl.classList.add('climbing');
+          setTimeout(() => confValEl.classList.remove('climbing'), 450);
+        }
+      }
+      requestAnimationFrame(step);
+    }
+
+    /* progressTeam — advances a team badge through state sequence with delays */
+    const TEAM_STATES = [
+      { cls:'dispatching', label:'DISPATCHING' },
+      { cls:'enroute',     label:'EN ROUTE'    },
+      { cls:'nearzone',    label:'NEAR ZONE'   },
+      { cls:'onsite',      label:'ON SITE'     },
+    ];
+    function progressTeam(badgeId, fromIdx, toIdx, stepDelayMs) {
+      for (let i = fromIdx + 1; i <= toIdx; i++) {
+        const state = TEAM_STATES[i];
+        setTimeout(() => {
+          const el = document.getElementById(badgeId);
+          if (!el) return;
+          TEAM_STATES.forEach(s => el.classList.remove(s.cls));
+          el.classList.add(state.cls);
+          el.textContent = state.label;
+        }, (i - fromIdx) * stepDelayMs);
+      }
+    }
+
+    /* showTeamStrip — reveals team status panel */
+    function showTeamStrip() {
+      const strip = document.getElementById('team-status-strip');
+      if (strip) strip.style.display = 'flex';
+    }
+
+    /* resetTeamStrip — hides and resets all badges */
+    function resetTeamStrip() {
+      const strip = document.getElementById('team-status-strip');
+      if (strip) strip.style.display = 'none';
+      ['alpha','rajan','meera'].forEach(id => {
+        const el = document.getElementById('tbadge-' + id);
+        if (!el) return;
+        TEAM_STATES.forEach(s => el.classList.remove(s.cls));
+        el.classList.add('dispatching');
+        el.textContent = 'DISPATCHING';
+      });
+    }
+
+    /* Agent step bar helpers */
+    function setStep(id, state) {
+      ['sentinel', 'severity', 'resource', 'comms', 'triage'].forEach(s => {
+        const el = document.getElementById('step-' + s);
+        if (!el) return;
+        el.classList.remove('active', 'done');
+      });
+      if (state === 'active') {
+        const el = document.getElementById('step-' + id);
+        if (el) el.classList.add('active');
+      } else if (state === 'done') {
+        const el = document.getElementById('step-' + id);
+        if (el) el.classList.add('done');
+      }
+    }
+    function completeStep(id) {
+      const el = document.getElementById('step-' + id);
+      if (el) { el.classList.remove('active'); el.classList.add('done'); }
+    }
+
+    /* ═══════════════════════════════════════════
+       MULTI-DISASTER SCENARIOS
+    ═══════════════════════════════════════════ */
+    const DISASTERS = [
+      {
+        id: 0,
+        label: 'Kerala Flood',
+        emoji: '🌊',
+        bannerTitle: '⚠ NEW DISASTER DETECTED — ALAPPUZHA KERALA',
+        mapLabel: 'ALAPPUZHA DISTRICT, KERALA',
+        mapCoords: '9.4981°N 76.3388°E',
+        incidentPin: 'Flash Flood · Sev ',
+        leafletCenter: [9.4981, 76.3388], leafletZoom: 14,
+        alertTitle: 'Flash Flood · Alappuzha', alertSub: 'Severity 8.7 · Pipeline activated',
+        sentinelLines: [
+          'Real-time anomaly detected — NOAA sensor array triggered',
+          'Event source: Pamba River gauge +2.1m above danger mark',
+          'Flood event confirmed: Alappuzha, Kerala — Type: FLASH FLOOD',
+          'Satellite imagery cross-referenced — extent: 18km radius',
+        ],
+        severityLine: 'Ingesting: rainfall 210mm/hr, wind 42km/h NE, population density high',
+        peopleAtRisk: '24,453',
+        timelineDetect: 'Flood detected · Alappuzha', tDetectBadge: 'NOAA CONFIRMED',
+        resourceLine1: 'Dispatching 3 rescue boats — Alappuzha central jetty',
+        resourceLine2: 'Nearest medical camp: Community Hall Zone 2 (1.4km)',
+        resourceLine3: 'Flood relief convoy: 18 units confirmed — ETA 9 min',
+        failureBody: 'Team Alpha delayed — road blocked at Zone 3 checkpoint',
+        failureAction: '→ Re-routing via NH-66 bypass...',
+        rerouteConfirm: 'Team Alpha re-routed successfully via NH-66',
+        rerouteAction: '→ ETA updated: 11 minutes — proceeding',
+        commsLine: 'Preparing SMS batch for 5 volunteers…',
+        sms: [
+          ['+91 98765 43210 · V-03', 'ALERT: Deploy zone 3, Alappuzha. Bring 10 water kits. – Sentinel AI', 'ack'],
+          ['+91 91234 56789 · V-07 Rajan', 'URGENT: Medical supplies needed zone 2. ETA under 15min. – Sentinel AI', 'ack'],
+          ['+91 99987 66554 · V-11 Meera', 'DISPATCH: Logistics coordination zone 4. Proceed immediately. – Sentinel AI', null],
+          ['+91 88991 12233 · V-05 Arun', 'NOTICE: Boat crew needed at Kottayam jetty zone 1. – Sentinel AI', 'ack'],
+        ],
+        bgLogs: [
+          { agent: 'Sentinel Agent', cls: 'sentinel', msgs: ['River gauge at Mankombu: +1.8m, still rising', 'Satellite imagery updated — flood extent +12%', 'NOAA rainfall forecast: 180mm next 6h'] },
+          { agent: 'Resource Matcher', cls: 'resource', msgs: ['Medical van 3 reached checkpoint Alpha', 'Boat station B: 3 additional craft available', 'Supply convoy ETA updated: 7 minutes'] },
+          { agent: 'Comms Agent', cls: 'comms', msgs: ['District Collector notified via priority line', 'WhatsApp alerts sent to 1,240 registered families'] },
+          { agent: 'Triage Agent', cls: 'triage', msgs: ['New chat session: survivor at Ward 7', 'Medical query resolved — 94% confidence'] },
+        ],
+        confWarn: 'Possible underestimation — river gauge data sparse',
+      },
+      {
+        id: 1,
+        label: 'Himachal Quake',
+        emoji: '🏔',
+        bannerTitle: '⚠ EARTHQUAKE DETECTED — HIMACHAL PRADESH',
+        mapLabel: 'KULLU DISTRICT, HIMACHAL PRADESH',
+        mapCoords: '31.9592°N 77.1089°E',
+        incidentPin: 'Earthquake · M',
+        leafletCenter: [31.9592, 77.1089], leafletZoom: 12,
+        alertTitle: 'Earthquake · Kullu, HP', alertSub: 'USGS M6.1 · Pipeline activated',
+        sentinelLines: [
+          'USGS seismic event detected — magnitude 6.1 at shallow depth 14km',
+          'Epicenter: Kullu Valley, Himachal Pradesh — 31.9592°N 77.1089°E',
+          'Earthquake confirmed: Type TECTONIC — aftershock probability HIGH',
+          'Drone survey initiated — 6 villages in impact radius flagged',
+        ],
+        severityLine: 'Ingesting: M6.1, depth 14km, Kullu valley — population 68,400 in radius',
+        peopleAtRisk: '12,880',
+        timelineDetect: 'Quake detected · Kullu', tDetectBadge: 'USGS CONFIRMED',
+        resourceLine1: 'Dispatching 4 SDRF teams — Kullu district HQ staging area',
+        resourceLine2: 'Field hospital unit: Bhuntar airstrip (3.2km from epicenter)',
+        resourceLine3: 'Search & rescue convoy: 22 units confirmed — ETA 14 min',
+        failureBody: 'Biker scout Team Bravo blocked — Rohtang landslide closure',
+        failureAction: '→ Re-routing via Jalori Pass alternate route...',
+        rerouteConfirm: 'Team Bravo re-routed successfully via Jalori Pass',
+        rerouteAction: '→ ETA updated: 19 minutes — proceeding',
+        commsLine: 'Preparing SMS batch for 5 SDRF volunteers…',
+        sms: [
+          ['+91 94180 22113 · S-01 Vikram', 'ALERT: Deploy sector 2, Kullu. Heavy rescue gear required. – Sentinel AI', 'ack'],
+          ['+91 97360 44521 · S-04 Priya', 'URGENT: Structural collapse zone A. Medical kit & stretchers. – Sentinel AI', 'ack'],
+          ['+91 90011 73345 · S-07 Dhruv', 'DISPATCH: Search grid B3. 3 persons unaccounted. Proceed. – Sentinel AI', null],
+          ['+91 88123 99210 · S-02 Kavya', 'NOTICE: Coordinate with NDRF at Bhuntar staging. – Sentinel AI', 'ack'],
+        ],
+        bgLogs: [
+          { agent: 'Sentinel Agent', cls: 'sentinel', msgs: ['Aftershock M3.8 detected — 8 min post-event', 'Seismic alert upgraded — Beas river monitoring active', 'USGS shake-map updated — MMI VII in Kullu core'] },
+          { agent: 'Resource Matcher', cls: 'resource', msgs: ['NDRF Column 4 en route from Chandigarh', 'Helicopter IAF Mi-17 on standby — Bhuntar airstrip', 'Rescue dog unit mobilised — ETA 25 min'] },
+          { agent: 'Comms Agent', cls: 'comms', msgs: ['HP State EOC alerted via priority uplink', 'Village headmen notified — Naggar & Manali sectors'] },
+          { agent: 'Triage Agent', cls: 'triage', msgs: ['Crush injury assessment: 3 critical flagged', 'Survivor located via WhatsApp pin — zone B2'] },
+        ],
+        confWarn: 'Aftershock risk elevates uncertainty — reassessing every 5 min',
+      },
+      {
+        id: 2,
+        label: 'Odisha Cyclone',
+        emoji: '🌀',
+        bannerTitle: '⚠ CYCLONE LANDFALL — ODISHA COAST',
+        mapLabel: 'PURI DISTRICT, ODISHA',
+        mapCoords: '19.8135°N 85.8312°E',
+        incidentPin: 'Cyclone · Cat',
+        leafletCenter: [19.8135, 85.8312], leafletZoom: 11,
+        alertTitle: 'Cyclone · Puri Coast', alertSub: 'IMD Cat-3 · Pipeline activated',
+        sentinelLines: [
+          'IMD cyclone track updated — landfall imminent at Puri, Odisha coast',
+          'Storm surge forecast: 3.2m above normal tide — coastal breach likely',
+          'Cyclone confirmed: Category 3 — Wind speed 185km/h, moving NNW',
+          'Satellite track locked — 12 coastal villages in direct impact corridor',
+        ],
+        severityLine: 'Ingesting: 185km/h sustained winds, storm surge 3.2m, coastal pop. density critical',
+        peopleAtRisk: '41,200',
+        timelineDetect: 'Cyclone landfall · Puri', tDetectBadge: 'IMD CONFIRMED',
+        resourceLine1: 'Pre-positioning 6 cyclone shelters — Puri coast evacuation corridors',
+        resourceLine2: 'Disaster response unit: Bhubaneswar base (52km inland staging)',
+        resourceLine3: 'Evacuation convoy: 34 buses confirmed — ETA 11 min',
+        failureBody: 'Convoy Route-4 blocked — NH-316 flooded at Brahmagiri stretch',
+        failureAction: '→ Re-routing via SH-17 inland bypass...',
+        rerouteConfirm: 'Convoy re-routed successfully via SH-17',
+        rerouteAction: '→ ETA updated: 16 minutes — proceeding',
+        commsLine: 'Preparing emergency SMS batch for coastal volunteers…',
+        sms: [
+          ['+91 96580 12341 · C-01 Sushant', 'ALERT: Mandatory evacuation zone 1, Puri coast. Lead convoy. – Sentinel AI', 'ack'],
+          ['+91 94770 55678 · C-05 Ananya', 'URGENT: Shelter 3 capacity management — 800 incoming. – Sentinel AI', 'ack'],
+          ['+91 89990 34412 · C-09 Ratan', 'DISPATCH: Marine rescue team to Satapada jetty. Immediate. – Sentinel AI', null],
+          ['+91 77881 23309 · C-03 Lipsa', 'NOTICE: Coordinate food & water at Cyclone Shelter C. – Sentinel AI', 'ack'],
+        ],
+        bgLogs: [
+          { agent: 'Sentinel Agent', cls: 'sentinel', msgs: ['Wind gusts now 210km/h — eye approaching landfall', 'Storm surge rising 0.4m/hr — coastal breach imminent', 'IMD track updated — landfall in 45 min'] },
+          { agent: 'Resource Matcher', cls: 'resource', msgs: ['Shelter 2 at 80% capacity — diverting to Shelter 5', 'ODRAF teams deployed to all 6 coastal blocks', 'NDRF Column 2 positioned at Chilika staging point'] },
+          { agent: 'Comms Agent', cls: 'comms', msgs: ['Coast guard alerted — sea rescue standby activated', 'All 41,200 at-risk residents notified via broadcast'] },
+          { agent: 'Triage Agent', cls: 'triage', msgs: ['Evacuation status: 78% compliant — 9,000 still in zone', 'Medical triages active at 4 shelter intake points'] },
+        ],
+        confWarn: 'Storm track uncertainty ±18km — impact corridor reassessing',
+      },
+    ];
+
+    let activeDisaster = 0;
+
+    function selectDisaster(idx) {
+      activeDisaster = idx;
+      // Update button highlight
+      document.querySelectorAll('.dis-btn').forEach((b, i) => {
+        b.classList.toggle('selected', i === idx);
+      });
+      // Update sub-label
+      document.getElementById('demo-sub-text').textContent =
+        `Simulates full Sentinel AI pipeline · ${DISASTERS[idx].label}`;
+    }
+
+    /* ═══════════════════════════════════════════
+       RESET STATE FOR RE-RUN
+    ═══════════════════════════════════════════ */
+    function resetPipelineState() {
+      // Clear logs & SMS & timeline
+      document.getElementById('decision-log').innerHTML = '';
+      document.getElementById('sms-list').innerHTML = '';
+      document.getElementById('timeline-feed').innerHTML = '';
+      // Hide dynamic UI elements
+      document.getElementById('new-alert').style.display = 'none';
+      document.getElementById('failure-card').classList.remove('show');
+      document.getElementById('conf-block').style.display = 'none';
+      document.getElementById('mb-conf').style.display = 'none';
+      document.getElementById('mb-warn').style.display = 'none';
+      document.getElementById('disaster-banner').classList.remove('show');
+      document.getElementById('thinking-overlay').classList.remove('show');
+      document.getElementById('agent-step-bar').style.display = 'none';
+      document.getElementById('chat-context-bar').classList.remove('show');
+      // Reset stats
+      ['stat-incidents', 'stat-units', 'stat-triage', 'stat-sms'].forEach(id => {
+        const el = document.getElementById(id);
+        if (id === 'stat-incidents') el.textContent = '2';
+        else if (id === 'stat-units') el.textContent = '3';
+        else if (id === 'stat-triage') el.textContent = '12';
+        else if (id === 'stat-sms') el.textContent = '8';
+      });
+      document.getElementById('bar-incidents').style.width = '40%';
+      document.getElementById('bar-units').style.width = '30%';
+      document.getElementById('bar-sms').style.width = '50%';
+      // Reset map overlays
+      const ip = document.getElementById('incident-pin');
+      if (ip) ip.style.display = 'none';
+      const dc = document.getElementById('incident-core');
+      if (dc) dc.style.display = 'none';
+      document.getElementById('vol-group').innerHTML = '';
+      document.getElementById('res-group').innerHTML = '';
+      document.getElementById('res-group').style.display = 'none';
+      if (document.getElementById('routes-group'))
+        document.getElementById('routes-group').innerHTML = '';
+      // Reset step bar
+      ['sentinel', 'severity', 'resource', 'comms', 'triage'].forEach(s => {
+        const el = document.getElementById('step-' + s);
+        if (el) { el.classList.remove('active', 'done'); }
+      });
+      resetTeamStrip();
+      // Reset map badge counters
+      document.getElementById('mb-units').textContent = '0';
+      document.getElementById('mb-triage').textContent = '0';
+      document.getElementById('pipeline-pill').style.display = 'none';
+      // Show demo trigger again briefly (will be hidden immediately by startDemo)
+      demoRunning = false;
+    }
+
+    async function startDemo() {
+      console.log("START_DEMO_TRIGGERED");
+      if (demoRunning) return;
+
+      // SINGLE SOURCE OF TRUTH: LIVE_EVENT overrides DISASTERS[] when set.
+      const D = LIVE_EVENT ? LIVE_EVENT : DISASTERS[activeDisaster];
+      console.log("LIVE EVENT:", LIVE_EVENT);
+
+      if (!D) { console.error("No disaster scenario available — aborting"); return; }
+      console.log("PHASE 0 START — scenario:", D.label);
+
+      // Reset previous run
+      resetPipelineState();
+
+      demoRunning = true;
+
+      // Update map static labels
+      const svgTexts = document.querySelectorAll('#map-svg text');
+      if (svgTexts[0]) svgTexts[0].textContent = D.mapLabel;
+      if (svgTexts[1]) svgTexts[1].textContent = D.mapCoords;
+
+      // Update disaster banner title
+      document.querySelector('#disaster-banner .banner-title').textContent = D.bannerTitle;
+
+      // Update new-alert content
+      document.getElementById('new-alert-title').textContent = D.alertTitle;
+      document.getElementById('new-alert-sub').textContent = D.alertSub;
+
+      // Swap background ticker to scenario logs
+      BG_LOGS.length = 0;
+      D.bgLogs.forEach(l => BG_LOGS.push(l));
+
+      document.getElementById('demo-trigger').style.display = 'none';
+      document.getElementById('pipeline-pill').style.display = 'block';
+
+
+      /* ── Phase 0: THINKING ── */
+      const overlay = document.getElementById('thinking-overlay');
+      const thinkText = document.getElementById('thinking-text');
+      const thinkSub = document.getElementById('thinking-sub');
+      const scanFill = document.getElementById('thinking-scan-fill');
+      overlay.classList.add('show');
+      flashMap();
+
+      // scanning bar animation
+      let scanPct = 0;
+      const scanTimer = setInterval(() => {
+        scanPct = Math.min(scanPct + 1.2, 100);
+        scanFill.style.width = scanPct + '%';
+        if (scanPct >= 100) clearInterval(scanTimer);
+      }, 20);
+
+      const thinkLines = [
+        ['Analyzing disaster data…', 'Cross-referencing NOAA telemetry…'],
+        ['Processing sensor array…', 'River gauge data incoming…'],
+        ['Running anomaly detection…', 'Comparing against 12,400 historical events…'],
+        ['Severity model loading…', 'Estimating population impact radius…'],
+      ];
+      for (const [t, s] of thinkLines) {
+        thinkText.textContent = t;
+        thinkSub.textContent = s;
+        await delay(400);
+      }
+      await delay(800);
+      overlay.classList.remove('show');
+
+      /* ── Banner + flash ── */
+      flashMap(); flashMap();
+      const banner = document.getElementById('disaster-banner');
+      banner.classList.add('show');
+      document.getElementById('new-alert').style.display = 'block';
+      const now = new Date();
+      document.getElementById('new-alert-time').textContent =
+        `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+      // switch to decision log tab + show step bar
+      const dtab = document.querySelector('.right-top .tab:nth-child(2)');
+      switchTab(dtab, 'decision');
+      document.getElementById('agent-step-bar').style.display = 'flex';
+
+      console.log("PHASE 1 START");
+      /* ── Phase 1: Sentinel Agent — step-by-step reasoning stream ── */
+      setStep('sentinel', 'active');
+      await delay(400);
+      banner.querySelector('.banner-sub').textContent = 'Sentinel Agent: scanning telemetry…';
+
+      // STEP 1 — Alert shown first, then logs start
+      logStep('Sentinel Agent', 'sentinel', 'DETECT', 'detect', 'Anomaly detected — scanning sensor array…', false);
+      addTimeline('Pipeline initialised', 'STARTED', 'blue');
+      await delay(900);
+
+      logStep('Sentinel Agent', 'sentinel', 'VERIFY', 'verify', D.sentinelLines[0]);
+      await delay(900);
+
+      logStep('Sentinel Agent', 'sentinel', 'VERIFY', 'verify', D.sentinelLines[1]);
+      await delay(1000);
+
+      logStep('Sentinel Agent', 'sentinel', 'ALERT', 'alert', D.sentinelLines[2], true);
+      // Map animates AFTER alert is shown (requirement 7)
+      await delay(300);
+      revealIncident();
+      if (window.lmap) {
+        window.lmap.flyTo(D.leafletCenter, D.leafletZoom, { duration: 1.5, easeLinearity: 0.25 });
+      }
+      addTimeline(D.timelineDetect, D.tDetectBadge, 'red');
+
+      await delay(800);
+      logNow('Sentinel Agent', 'sentinel', D.sentinelLines[3]);
+      completeStep('sentinel');
+
+      console.log("PHASE 2 START");
+      /* ── Phase 2: Severity Engine — dynamic confidence sync ── */
+      await delay(900);
+      setStep('severity', 'active');
+      banner.querySelector('.banner-sub').textContent = 'Severity Engine: calculating risk score…';
+
+      logStep('Severity Engine', 'calc', 'INGEST', 'verify', D.severityLine);
+      // Confidence starts low and climbs with each step (requirement 2)
+      document.getElementById('conf-block').style.display = 'block';
+      document.getElementById('conf-val').textContent = '42';
+      document.getElementById('conf-bar').style.width = '42%';
+      document.getElementById('mb-conf').style.display = 'block';
+      document.getElementById('mb-conf-val').textContent = '42';
+      await delay(700);
+      animateConfidenceTo(61, 900);
+
+      await delay(1100);
+      const sev = (7.5 + Math.random() * 1.5).toFixed(1);
+      logStep('Severity Engine', 'calc', 'SCORE', 'score', `Severity score: ${sev}/10 — Classification: CRITICAL`, true);
+      animateConfidenceTo(74, 1000);
+      await delay(800);
+
+      logStep('Severity Engine', 'calc', 'ZONE', 'zone', `Estimated people at risk: ${D.peopleAtRisk} in affected radius`);
+      animateConfidenceTo(82, 1200);
+      addTimeline(`Severity calculated: ${sev}/10`, 'CRITICAL', 'red');
+
+      await delay(700);
+      if (D.confWarn) {
+        document.getElementById('conf-warn').style.display = 'flex';
+        document.getElementById('conf-warn-text').textContent = D.confWarn;
+      }
+      document.getElementById('conf-reeval').style.display = 'block';
+      startReevalCountdown(30);
+
+      animateCount('stat-incidents', 2, 3, 1200);
+      document.getElementById('bar-incidents').style.width = '60%';
+      completeStep('severity');
+
+      /* ── Phase 3: Resource Matcher — team strip + route draw ── */
+      await delay(900);
+      setStep('resource', 'active');
+      banner.querySelector('.banner-sub').textContent = 'Resource Matcher: scanning volunteer database…';
+      logStep('Resource Matcher', 'resource', 'SCAN', 'verify', 'Scanning volunteer DB — filtering by proximity, skill, availability');
+
+      await delay(1100);
+      logStep('Resource Matcher', 'resource', 'MATCH', 'match', 'Found 8 volunteers within 22km radius');
+
+      await delay(800);
+      logStep('Resource Matcher', 'resource', 'ROUTE', 'zone', 'Route optimisation: Haversine + road network overlay');
+
+      await delay(800);
+      logStep('Resource Matcher', 'resource', 'DEPLOY', 'deploy', 'Priority selection: Team Alpha (S&R) · Rajan K. (Medical) · Meera P. (Logistics)', true);
+
+      // Show team status strip (requirement 4)
+      showTeamStrip();
+
+      // Routes draw progressively, then travel direction animates (requirement 3)
+      revealRoutesSequential();
+      setTimeout(() => {
+        const rg = document.getElementById('res-group');
+        rg.style.display = 'block';
+        Array.from(rg.children).forEach((g, i) => {
+          g.style.opacity = 0;
+          setTimeout(() => {
+            g.animate([{ opacity: 0 }, { opacity: 1 }],
+              { duration: 350, fill: 'forwards', easing: 'ease-out' });
+            setTimeout(() => g.style.opacity = 1, 300);
+          }, i * 80);
+        });
+      }, 200);
+
+      await delay(600);
+      revealVolunteers();
+      addTimeline('Resources allocated · 5 units', 'DEPLOYED', 'green');
+
+      // Team status: Dispatching → En Route (staggered per team)
+      setTimeout(() => progressTeam('tbadge-alpha', 0, 1, 0), 1200);
+      setTimeout(() => progressTeam('tbadge-rajan', 0, 1, 0), 2000);
+      setTimeout(() => progressTeam('tbadge-meera', 0, 1, 0), 2800);
+
+      await delay(300); animateCount('stat-units', 3, 5, 800);
+      await delay(500); animateCount('stat-units', 5, 8, 800);
+      document.getElementById('bar-units').style.width = '75%';
+      document.getElementById('mb-units').textContent = '8';
+
+      /* ── Phase 4: Failure + Recovery event (requirement 6) ── */
+      await delay(2500);
+      document.getElementById('failure-card').classList.add('show');
+      document.getElementById('mb-warn').style.display = 'block';
+      logStep('Resource Matcher', 'resource', 'ALERT', 'alert', '⚠ Team Alpha delayed — road blockage at Zone 3 checkpoint');
+
+      // Alpha reverts to DISPATCHING during blockage
+      setTimeout(() => {
+        const el = document.getElementById('tbadge-alpha');
+        if (el) { TEAM_STATES.forEach(s => el.classList.remove(s.cls)); el.classList.add('dispatching'); el.textContent = 'BLOCKED'; }
+      }, 400);
+
+      await delay(900);
+      logStep('Resource Matcher', 'resource', 'REROUTE', 'zone', `Fallback: Re-routing via NH-66 bypass — ETA revised +7 min`);
+      addTimeline('Team Alpha delayed', 'RE-ROUTING', 'amber');
+
+      await delay(3000);
+      document.getElementById('failure-body').textContent = D.rerouteConfirm || 'Team Alpha re-routed successfully via NH-66';
+      document.getElementById('failure-action').textContent = D.rerouteAction || '→ ETA updated: 11 minutes — proceeding';
+      document.getElementById('mb-warn').style.display = 'none';
+      logStep('Resource Matcher', 'resource', 'DEPLOY', 'deploy', 'Re-routing complete — Team Alpha ETA confirmed: 11 min', true);
+      addTimeline('Re-routing resolved', 'CONFIRMED', 'green');
+
+      // Alpha back on route, advances to Near Zone
+      progressTeam('tbadge-alpha', 0, 2, 0);
+      setTimeout(() => progressTeam('tbadge-alpha', 2, 3, 6000), 500);
+      setTimeout(() => progressTeam('tbadge-rajan', 1, 2, 0), 1500);
+      setTimeout(() => progressTeam('tbadge-meera', 1, 2, 0), 2500);
+      completeStep('resource');
+
+      /* ── Phase 5: Comms Agent ── */
+      await delay(900);
+      setStep('comms', 'active');
+      banner.querySelector('.banner-sub').textContent = 'Comms Agent: dispatching SMS to field units…';
+      logStep('Comms Agent', 'comms', 'BATCH', 'verify', D.commsLine || 'Preparing SMS batch for 5 volunteers…');
+
+      const smstab = document.querySelector('.right-bottom .tab:nth-child(2)');
+      switchTab(smstab, 'sms');
+
+      // Use scenario-specific SMS list if available, else fall back to defaults
+      const smsList2 = D.sms || [
+        ['+91 98765 43210 · V-03', 'ALERT: Deploy zone 3, Alappuzha. Bring 10 water kits. – Sentinel AI', 'ack'],
+        ['+91 91234 56789 · V-07 Rajan', 'URGENT: Medical supplies needed zone 2. ETA under 15min. – Sentinel AI', 'ack'],
+        ['+91 99987 66554 · V-11 Meera', 'DISPATCH: Logistics coordination zone 4. Proceed immediately. – Sentinel AI', null],
+        ['+91 88991 12233 · V-05 Arun', 'NOTICE: Boat crew needed at Kottayam jetty zone 1. – Sentinel AI', 'ack'],
+      ];
+
+      await delay(900);
+      addSMS(smsList2[0][0], smsList2[0][1], smsList2[0][2]);
+      logStep('Comms Agent', 'comms', 'SEND', 'deploy', `SMS dispatched → ${smsList2[0][0].split('·')[1]?.trim() || 'V-03'} (Team Alpha Lead)`);
+      addTimeline('SMS dispatched · Unit 1', 'SENDING', 'blue');
+
+      await delay(1200);
+      addSMS(smsList2[1][0], smsList2[1][1], smsList2[1][2]);
+      logStep('Comms Agent', 'comms', 'SEND', 'deploy', `SMS dispatched → ${smsList2[1][0].split('·')[1]?.trim() || 'V-07'} (Medical)`);
+
+      await delay(1000);
+      addSMS(smsList2[2][0], smsList2[2][1], smsList2[2][2]);
+      logStep('Comms Agent', 'comms', 'SEND', 'deploy', `SMS dispatched → ${smsList2[2][0].split('·')[1]?.trim() || 'V-11'} (Logistics)`);
+
+      if (smsList2[3]) {
+        await delay(800);
+        addSMS(smsList2[3][0], smsList2[3][1], smsList2[3][2]);
+      }
+
+      await delay(700);
+      logStep('Comms Agent', 'comms', 'BATCH', 'deploy', 'SMS batch sent — awaiting delivery confirmations (5-25s per message)', true);
+      addTimeline('All SMS dispatched', '4 QUEUED', 'blue');
+      document.getElementById('bar-sms').style.width = '70%';
+      completeStep('comms');
+
+      /* ── Phase 6: Triage activation ── */
+      await delay(900);
+      setStep('triage', 'active');
+      logStep('Triage Agent', 'triage', 'INIT', 'detect', 'Triage chat sessions initialised — accepting incoming queries', true);
+
+      await delay(800);
+      logNow('Triage Agent', 'triage', 'High-risk zone context injected into all chat sessions');
+      document.getElementById('chat-context-bar').classList.add('show');
+      addTimeline('Triage Agent active', 'ONLINE', 'green');
+      animateCount('stat-triage', 12, 13, 600);
+      await delay(500); animateCount('stat-triage', 13, 15, 800);
+
+      // Final confidence boost at pipeline completion
+      animateConfidenceTo(91, 1400);
+      completeStep('triage');
+
+      /* ── Phase 7: Finish ── */
+      await delay(1000);
+      // Remaining teams arrive on site
+      setTimeout(() => progressTeam('tbadge-rajan', 2, 3, 0), 500);
+      setTimeout(() => progressTeam('tbadge-meera', 2, 3, 0), 1200);
+
+      logStep('Sentinel Agent', 'sentinel', 'DONE', 'deploy', '══════ ALL AGENTS OPERATIONAL ══════', true);
+      addTimeline('All agents operational', 'PIPELINE COMPLETE', 'green');
+      banner.querySelector('.banner-sub').textContent = 'All systems operational — monitoring continues';
+      document.getElementById('pipeline-pill').style.display = 'none';
+
+      // Trigger hospital alert system
+      sendAlert(D.leafletCenter[0], D.leafletCenter[1], D.label || 'disaster');
+
+      startBackgroundTicker();
+      demoRunning = false;
+    }
+
+    /* ═══════════════════════════════════════════
+       BACKGROUND TICKERS
+    ═══════════════════════════════════════════ */
+    const BG_LOGS = [
+      {
+        agent: 'Sentinel Agent', cls: 'sentinel', msgs: [
+          'River gauge at Mankombu: +1.8m, still rising',
+          'Satellite imagery updated — flood extent +12%',
+          'NOAA rainfall forecast: 180mm next 6h',
+          'Wind speed: 42 km/h NE — boats on alert',
+        ]
+      },
+      {
+        agent: 'Resource Matcher', cls: 'resource', msgs: [
+          'Medical van 3 reached checkpoint Alpha',
+          'Drone survey complete — zone 4 accessible',
+          'Supply convoy ETA updated: 7 minutes',
+          'Boat station B: 3 additional craft available',
+        ]
+      },
+      {
+        agent: 'Comms Agent', cls: 'comms', msgs: [
+          'District Collector notified via priority line',
+          'Radio relay active on frequency 156.8 MHz',
+          'WhatsApp alerts sent to 1,240 registered families',
+          'Broadcast sent to all field units',
+        ]
+      },
+      {
+        agent: 'Triage Agent', cls: 'triage', msgs: [
+          'New chat session: survivor at Ward 7',
+          'AI assessed: non-critical, redirected to camp',
+          'Medical query resolved — 94% confidence',
+          'Connecting survivor to on-ground medic',
+        ]
+      },
+    ];
+    const LIVE_SMS = [
+      { to: '+91 98765 12345 · V-08', msg: 'Proceeding to zone 4. ETA 8 mins.' },
+      { to: '+91 91234 98765 · V-09', msg: 'Medical supplies loaded. En route.' },
+      { to: '+91 77665 11234 · V-10', msg: 'Evacuation complete: 12 families.' },
+      { to: '+91 66778 34521 · V-06', msg: 'Power restored at medical camp — equipment online.' },
+    ];
+    function startBackgroundTicker() {
+      // log ticker
+      setInterval(() => {
+        const src = BG_LOGS[Math.floor(Math.random() * BG_LOGS.length)];
+        const msg = src.msgs[Math.floor(Math.random() * src.msgs.length)];
+        addDecisionLog(src.agent, src.cls, msg);
+      }, 3500);
+
+      // sms ticker
+      setInterval(() => {
+        const s = LIVE_SMS[Math.floor(Math.random() * LIVE_SMS.length)];
+        addSMS(s.to, s.msg + ' – Sentinel AI', null);
+      }, 7000);
+
+      // stats micro-bumps
+      setInterval(() => {
+        const tEl = document.getElementById('stat-triage');
+        const cur = parseInt(tEl.textContent.replace(/,/g, '')) || 0;
+        const inc = Math.floor(Math.random() * 2);
+        if (inc > 0) animateCount('stat-triage', cur, cur + inc, 600);
+      }, 5000);
+
+      // TASK 2: dedicated movement loop — 300ms for visibly faster travel
+      setInterval(() => { animateVolunteers(); }, 300);
+
+      // confidence re-eval loop
+      setInterval(() => {
+        const confEl = document.getElementById('conf-val');
+        if (confEl.textContent !== '--') {
+          document.getElementById('conf-reeval').style.display = 'block';
+          startReevalCountdown(30);
+        }
+      }, 35000);
+    }
+
+    /* animateVolunteers is defined above in MAP REVEAL section */
+
+    /* ═══════════════════════════════════════════
+       DISASTER DETECTION LAYER — LIVE EARTHQUAKE
+       Fetches real USGS data → sets LIVE_EVENT →
+       startDemo() reads LIVE_EVENT as source of truth.
+       Manual demo button unchanged.
+    ═══════════════════════════════════════════ */
+
+    // SINGLE SOURCE OF TRUTH — null means use DISASTERS[activeDisaster]
+    let LIVE_EVENT = null;
+
+    // Auto-poll state
+    let LIVE_MODE = false;
+    let _liveInterval = null;
+    let _lastTriggeredId = null;
+
+    /* ── detectDisaster: classify magnitude ── */
+    function detectDisaster(event) {
+      const mag = event.magnitude ?? 0;
+      if (mag >= 5.5) {
+        return {
+          severity: 'HIGH',
+          label:    `M${mag.toFixed(1)} Earthquake — ${event.place}`,
+          score:    Math.min(100, Math.round((mag / 9.5) * 100)),
+        };
+      }
+      // Below M5.5 — use whatever is latest (show it, still run pipeline)
+      return {
+        severity: 'MODERATE',
+        label:    `M${mag.toFixed(1)} Earthquake — ${event.place}`,
+        score:    Math.min(100, Math.round((mag / 9.5) * 100)),
+      };
+    }
+
+    /* ── buildLiveScenario: convert USGS event → full DISASTERS-compatible object ── */
+    function buildLiveScenario(event, detection) {
+      const mag   = event.magnitude ?? 0;
+      const place = event.place     ?? 'Unknown location';
+      const lat   = event.lat       ?? 0;
+      const lng   = event.lng       ?? 0;
+
+      // Determine Leaflet zoom: closer zoom for stronger quakes
+      const zoom = mag >= 7 ? 9 : mag >= 6 ? 10 : mag >= 5 ? 11 : 12;
+
+      return {
+        // Identity
+        id:    'live',
+        label: `Live: ${place}`,
+        emoji: '🌍',
+
+        // ── THESE DRIVE MAP MOVEMENT (critical) ──
+        leafletCenter: [lat, lng],
+        leafletZoom:   zoom,
+
+        // ── Banner & labels ──
+        bannerTitle:   `⚠ LIVE USGS EVENT — ${place.toUpperCase()}`,
+        mapLabel:      place.toUpperCase(),
+        mapCoords:     `${lat.toFixed(4)}°N ${lng.toFixed(4)}°E`,
+
+        // ── Alert card ──
+        alertTitle: `Earthquake · ${place}`,
+        alertSub:   `USGS M${mag.toFixed(1)} · ${detection.severity} · Pipeline activated`,
+
+        // ── Sentinel agent reasoning lines ──
+        sentinelLines: [
+          `USGS real-time seismic event — M${mag.toFixed(1)} detected`,
+          `Epicenter: ${place} — ${lat.toFixed(4)}°N, ${lng.toFixed(4)}°E`,
+          `Earthquake CONFIRMED — M${mag.toFixed(1)} ${detection.severity} severity · Sentinel pipeline activated`,
+          `Aftershock probability elevated — seismic monitoring active`,
+        ],
+
+        // ── Severity engine ──
+        severityLine:  `Ingesting: M${mag.toFixed(1)}, epicenter ${place}, seismic hazard zone — population density analysed`,
+        peopleAtRisk:  `${(Math.round((mag * 4200) / 100) * 100).toLocaleString()}`,
+
+        // ── Timeline ──
+        timelineDetect: `Quake detected · ${place.split(',')[0]}`,
+        tDetectBadge:   'USGS LIVE',
+
+        // ── Resource phase ──
+        resourceLine1: `Dispatching SDRF teams — nearest staging area to ${place.split(',')[0]}`,
+        resourceLine2: `Field hospital unit: closest district HQ (${(mag * 3.2).toFixed(1)}km from epicenter)`,
+        resourceLine3: `Search & rescue convoy: ${Math.ceil(mag * 3)} units confirmed — ETA ${Math.ceil(mag * 2)} min`,
+
+        // ── Failure/recovery ──
+        failureBody:     `Route blockage reported near epicentre zone — M${mag.toFixed(1)} structural damage`,
+        failureAction:   '→ Re-routing via alternate corridor...',
+        rerouteConfirm:  'Alternate route confirmed — structural clearance obtained',
+        rerouteAction:   '→ ETA updated: proceeding via cleared corridor',
+
+        // ── Comms ──
+        commsLine: `Preparing SMS batch for field units — M${mag.toFixed(1)} earthquake response…`,
+
+        // ── SMS dispatches ──
+        sms: [
+          [`+91 98765 43210 · R-01`, `ALERT: M${mag.toFixed(1)} quake at ${place.split(',')[0]}. Deploy immediately. – Sentinel AI`, 'ack'],
+          [`+91 91234 56789 · R-02 Medical`, `URGENT: Medical response needed. ETA under 15min. – Sentinel AI`, 'ack'],
+          [`+91 99987 66554 · R-03 Logistics`, `DISPATCH: Logistics coordination at epicentre zone. Proceed now. – Sentinel AI`, null],
+          [`+91 88991 12233 · R-04 Rescue`, `NOTICE: Search & rescue required at ${place.split(',')[0]}. – Sentinel AI`, 'ack'],
+        ],
+
+        // ── Background log ticker ──
+        bgLogs: [
+          {
+            agent: 'Sentinel Agent', cls: 'sentinel', msgs: [
+              `USGS data refreshed — M${mag.toFixed(1)} at ${place} confirmed`,
+              `Aftershock probability: ${Math.round(mag * 7)}% within 24h`,
+              `Seismic alert forwarded to district authorities`,
+              `Building collapse risk: ${detection.severity} in epicentre zone`,
+            ]
+          },
+          {
+            agent: 'Resource Matcher', cls: 'resource', msgs: [
+              'Search & Rescue team deployed to epicentre grid',
+              'Medical van en route — ETA 9 minutes',
+              'Heavy lifting equipment requested from depot',
+              'Drone survey of collapse zone initiated',
+            ]
+          },
+          {
+            agent: 'Comms Agent', cls: 'comms', msgs: [
+              'District Collector notified via priority line',
+              'NDRF alerted — column dispatched',
+              'Public broadcast issued in 3 languages',
+              'Hospital surge protocol activated',
+            ]
+          },
+          {
+            agent: 'Triage Agent', cls: 'triage', msgs: [
+              'Triage point established at community hall',
+              'Casualty reports incoming — routing to medical',
+              `AI triage: ${Math.ceil(mag)} critical, ${Math.ceil(mag * 2)} minor — ambulance priority set`,
+              'Mental health support unit activated',
+            ]
+          },
+        ],
+
+        // ── Confidence warning ──
+        confWarn: `Real-time USGS source · ${detection.score}% detection confidence · Sentinel AI`,
+      };
+    }
+
+    /* ── fetchAndTrigger: fetch → classify → set LIVE_EVENT → startDemo() ── */
+    async function fetchAndTrigger() {
+      console.log('[Detection] Fetching earthquakes from backend...');
+
+      let events;
+      try {
+        console.log('[Detection] Connecting to backend...');
+        const res = await fetch(API_BASE + '/api/earthquakes');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        events = await res.json();
+      } catch (err) {
+        console.warn('[Detection] Backend unavailable:', err.message);
+        _showDetectionBadge({ severity: 'ERROR', score: 0 }, 'Backend offline');
+        return;
+      }
+
+      if (!Array.isArray(events) || events.length === 0) {
+        console.log('[Detection] No events returned from USGS.');
+        _showDetectionBadge({ severity: 'NONE', score: 0 }, 'No events');
+        return;
+      }
+
+      // Filter for meaningful events (mag > 4.5) — anything below is background noise.
+      // Fall back to latest regardless if nothing qualifies (e.g. quiet hour).
+      const meaningful = events.filter(e => (e.magnitude ?? 0) > 4.5);
+      const latest = meaningful.length > 0 ? meaningful[0] : events[0];
+
+      console.log(`[Detection] Using event: M${latest.magnitude} — ${latest.place} (${latest.lat}, ${latest.lng})`);
+
+      // Skip duplicate trigger in LIVE_MODE
+      if (LIVE_MODE && latest.id === _lastTriggeredId) {
+        console.log('[Detection] Same event — skipping duplicate trigger.');
+        return;
+      }
+      _lastTriggeredId = latest.id;
+
+      // Notify backend via socket so it can broadcast to other connected clients
+      if (window._sentinelSocket && window._sentinelSocket.connected) {
+        window._sentinelSocket.emit('trigger_demo');
+      }
+
+      // Apply locally — sets LIVE_EVENT, moves map, fires startDemo()
+      _applyLiveEarthquake(latest);
+
+      // Trigger hospital alerts for the live event
+      sendAlert(latest.lat, latest.lng, 'earthquake');
+    }
+
+    /* ── _showDetectionBadge: topbar indicator ── */
+    function _showDetectionBadge(detection, place) {
+      let badge = document.getElementById('_live-detect-badge');
+      if (!badge) {
+        badge = document.createElement('div');
+        badge.id = '_live-detect-badge';
+        badge.className = 'pill incident';
+        badge.style.cssText = 'font-size:10px;cursor:default;max-width:240px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+        const topbarRight = document.querySelector('.topbar-right');
+        if (topbarRight) topbarRight.prepend(badge);
+      }
+      const short = place ? place.split(',')[0] : '';
+      badge.textContent = `LIVE ${detection.severity}${short ? ' · ' + short : ''}`;
+      badge.style.display = 'inline-block';
+      clearTimeout(badge._hideTimer);
+      badge._hideTimer = setTimeout(() => { badge.style.display = 'none'; }, 12000);
+    }
+
+    /* ── _toggleLiveMode: AUTO button handler ── */
+    function _toggleLiveMode() {
+      LIVE_MODE = !LIVE_MODE;
+      const btn = document.getElementById('live-mode-btn');
+      if (LIVE_MODE) {
+        btn.textContent = 'AUTO: ON';
+        btn.style.background  = '#0a2e1e';
+        btn.style.borderColor = '#1D9E75';
+        btn.style.color       = '#5bc45b';
+        console.log('[Detection] LIVE_MODE ON — polling every 30s');
+        fetchAndTrigger();
+        if (!_liveInterval) _liveInterval = setInterval(fetchAndTrigger, 30000);
+      } else {
+        btn.textContent = 'AUTO: OFF';
+        btn.style.background  = '#222630';
+        btn.style.borderColor = '#333844';
+        btn.style.color       = '#8A93A0';
+        console.log('[Detection] LIVE_MODE OFF');
+        if (_liveInterval) { clearInterval(_liveInterval); _liveInterval = null; }
+      }
+    }
+
+    console.log('[Detection] Ready. LIVE DETECT button active. LIVE_MODE =', LIVE_MODE);
+
+    /* ═══════════════════════════════════════════
+       SOCKET.IO — real-time backend connection
+       Replaces the old raw WebSocket stub.
+    ═══════════════════════════════════════════ */
+    (function initSocketIO() {
+      if (typeof io === 'undefined') {
+        console.warn('[ReliefAI] Socket.IO not loaded — skipping real-time backend connection.');
+        return;
+      }
+      let socket;
+      try {
+        console.log('[ReliefAI] Connecting to backend via Socket.IO at', API_BASE, '...');
+        socket = io(API_BASE, {
+          transports: ["websocket", "polling"],
+          reconnectionDelay: 2000,
+          reconnectionAttempts: 10,
+        });
+      } catch(e) {
+        console.warn('[ReliefAI] Socket.IO init failed:', e.message);
+        return;
+      }
+
+      // ── Connection lifecycle ──
+      socket.on("connect", () => {
+        console.log("[ReliefAI] Socket.IO connected:", socket.id);
+      });
+
+      socket.on("disconnect", (reason) => {
+        console.warn("[ReliefAI] Socket.IO disconnected:", reason);
+      });
+
+      socket.on("connect_error", (err) => {
+        console.warn("[ReliefAI] Socket.IO connect error:", err.message);
+      });
+
+      // ── Backend-pushed events (existing pipeline hooks) ──
+      socket.on("agent_log", (data) => {
+        addDecisionLog(data.agent, data.cls, data.msg);
+      });
+
+      socket.on("stats_update", (data) => {
+        if (data.volunteersActive) {
+          const cur = parseInt(document.getElementById("stat-units").textContent) || 0;
+          animateCount("stat-units", cur, data.volunteersActive, 800);
+        }
+      });
+
+      socket.on("sms_update", (data) => {
+        addSMS(data.to, data.msg, "delivered");
+      });
+
+      socket.on("timeline_update", (data) => {
+        addTimeline(data.label, data.badge, data.badgeCls || "blue");
+      });
+
+      // ── init_state: backend sends current snapshot on connect ──
+      socket.on("init_state", (state) => {
+        console.log("[ReliefAI] init_state received from backend");
+        if (state.logs && state.logs.length) {
+          state.logs.slice(0, 5).forEach(l => addDecisionLog(l.agent || "Sentinel", l.cls || "sentinel", l.msg || l));
+        }
+      });
+
+      // ── live_earthquake: backend can push a detected event ──
+      socket.on("live_earthquake", (event) => {
+        console.log("[ReliefAI] live_earthquake from backend:", event);
+        _applyLiveEarthquake(event);
+      });
+
+      // Expose socket globally so fetchAndTrigger can emit trigger_demo if needed
+      window._sentinelSocket = socket;
+    })();
+    /* ═══════════════════════════════════════════
+       LEAFLET MAP INIT — Alappuzha, Kerala
+    ═══════════════════════════════════════════ */
+    (function initLeafletMap() {
+      window.lmap = L.map('map', {
+        center: [9.4981, 76.3388],
+        zoom: 12,
+        zoomControl: false,
+        attributionControl: false,
+        dragging: false,
+        scrollWheelZoom: false,
+        doubleClickZoom: false,
+        boxZoom: false,
+        keyboard: false,
+      });
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        maxZoom: 19,
+      }).addTo(lmap);
+    })();
+
+    /* ── _applyLiveEarthquake: shared handler used by both fetchAndTrigger
+          and the socket "live_earthquake" event.
+          Converts a raw {lat, lng, magnitude, place} object into a full
+          LIVE_EVENT scenario and fires startDemo().                    ── */
+    function _applyLiveEarthquake(event) {
+      if (!event || typeof event.lat === 'undefined') {
+        console.warn('[ReliefAI] _applyLiveEarthquake: invalid event', event);
+        return;
+      }
+      const mag   = event.magnitude ?? 0;
+      const place = event.place     ?? 'Unknown location';
+      const lat   = event.lat       ?? 0;
+      const lng   = event.lng       ?? 0;
+
+      const detection = detectDisaster(event);
+      LIVE_EVENT = buildLiveScenario(event, detection);
+      console.log("LIVE_EVENT ACTIVE:", LIVE_EVENT);
+
+      // Reset any running pipeline so startDemo proceeds
+      if (demoRunning) demoRunning = false;
+
+      _showDetectionBadge(detection, place);
+
+      // Fly map immediately so user sees movement before pipeline overlay
+      if (window.lmap) {
+        const zoom = mag >= 7 ? 9 : mag >= 6 ? 10 : mag >= 5 ? 11 : 12;
+        window.lmap.flyTo([lat, lng], zoom, { duration: 1.2, easeLinearity: 0.3 });
+      }
+
+      // Short pause then launch full pipeline
+      setTimeout(() => startDemo(), 900);
+    }
+
+  </script>
+</body>
+
+</html>
