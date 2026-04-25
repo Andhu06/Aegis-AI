@@ -1,28 +1,15 @@
 // ============================================================
 //  routes/alert.js  –  POST /api/alert
-//  1. Finds nearest hospitals for given coordinates
-//  2. Returns full result summary (SMS removed)
 // ============================================================
 
 const express = require("express");
 const router  = express.Router();
 const { findNearestHospitals } = require("../services/hospitalService");
+const { findBestTeam }         = require("../services/resourceAllocator");
 
-/**
- * POST /api/alert
- * Body: { lat, lng, type }
- *
- * Response:
- * {
- *   success: true,
- *   disaster: { lat, lng, type },
- *   hospitals: [...]
- * }
- */
 router.post("/", async (req, res) => {
   const { lat, lng, type } = req.body;
 
-  // ── Validate ──────────────────────────────────────────────
   if (lat === undefined || lng === undefined || !type) {
     return res.status(400).json({
       success: false,
@@ -40,7 +27,7 @@ router.post("/", async (req, res) => {
   const disaster = { lat: latitude, lng: longitude, type };
 
   try {
-    // ── Step 1: Find hospitals ───────────────────────────────
+    console.log(`[Alert] Finding hospitals near (${latitude}, ${longitude})`);
     const hospitals = await findNearestHospitals(latitude, longitude);
 
     if (!hospitals.length) {
@@ -50,19 +37,21 @@ router.post("/", async (req, res) => {
       });
     }
 
-    // ── Step 2: Emit via Socket.IO if io is available ───────
+    console.log(`[Alert] Found ${hospitals.length} hospital(s). Nearest: "${hospitals[0].name}"`);
+
+    const allocation = findBestTeam(latitude, longitude);
+    console.log(`[Alert] Team allocated: "${allocation.team}" | ETA: ${allocation.eta} | Reason: ${allocation.reason}`);
+
     const io = req.app.get("io");
     if (io) {
-      io.emit("hospital_alert", {
-        disaster,
-        hospitals,
-        timestamp: new Date().toISOString(),
-      });
+      io.emit("hospital_alert", { disaster, hospitals, allocation, timestamp: new Date().toISOString() });
+      io.emit("team_allocated", { disaster, ...allocation, timestamp: new Date().toISOString() });
     }
 
-    return res.json({ success: true, disaster, hospitals });
+    return res.json({ success: true, disaster, hospitals, allocation });
 
   } catch (err) {
+    console.error("[Alert] ❌ Error:", err.message);
     return res.status(500).json({ success: false, error: err.message });
   }
 });
